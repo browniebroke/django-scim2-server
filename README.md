@@ -40,6 +40,9 @@
 
 An implementation of the System for Cross-domain Identity Management (SCIM) specification for your Django project.
 
+> [!WARNING]
+> This package is in early stage of its development, and I haven't deployed it to production yet. Use at your own risks!
+
 ## Installation
 
 Install this via pip (or your favourite package manager):
@@ -53,6 +56,23 @@ INSTALLED_APPS = [
     # ...
     "django_scim2_server",
 ]
+```
+
+Include the SCIM URL routes in your root URL configuration:
+
+```python
+from django.urls import include, path
+
+urlpatterns = [
+    # ...
+    path("scim/v2/", include("django_scim2_server.urls")),
+]
+```
+
+Run migrations to create the SCIM database tables:
+
+```bash
+python manage.py migrate
 ```
 
 ## Contributors ✨
