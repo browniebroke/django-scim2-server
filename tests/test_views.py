@@ -150,6 +150,26 @@ class UserListViewTest(AuthenticatedTestCase):
         assert data["itemsPerPage"] == 2
         assert data["startIndex"] == 2
 
+    def test_list_pagination_invalid_start_index_type(self) -> None:
+        resp = self.client.get("/scim/v2/Users?startIndex=not-an-int")
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "startIndex and count must be integers"
+
+    def test_list_pagination_invalid_start_index_lower_bound(self) -> None:
+        resp = self.client.get("/scim/v2/Users?startIndex=0")
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "startIndex must be >= 1"
+
+    def test_list_pagination_invalid_count_lower_bound(self) -> None:
+        resp = self.client.get("/scim/v2/Users?count=-1")
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "count must be >= 0"
+
+    def test_list_pagination_invalid_count_upper_bound(self) -> None:
+        resp = self.client.get("/scim/v2/Users?count=1001")
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "count must be <= 1000"
+
 
 class UserDetailViewTest(AuthenticatedTestCase):
     """Tests for GET/PUT/PATCH/DELETE /Users/<id>."""
@@ -792,6 +812,23 @@ class GroupDetailViewTest(AuthenticatedTestCase):
             content_type=SCIM_CONTENT_TYPE,
         )
         assert resp.status_code == 400
+        assert resp.json()["detail"] == "Cannot parse member filter"
+
+    def test_patch_group_remove_member_invalid_uuid_filter(self) -> None:
+        scim_group = self._create_scim_group()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "remove", "path": 'members[value eq "not-a-uuid"]'},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Cannot parse member filter"
 
     def test_patch_group_remove_external_id(self) -> None:
         group = Group.objects.create(name="extgrp")

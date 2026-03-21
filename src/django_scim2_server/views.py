@@ -33,11 +33,33 @@ from django_scim2_server.filters import parse_filter
 
 logger = logging.getLogger(__name__)
 
+MAX_PAGE_SIZE = 1000
+MAX_START_INDEX = 1000000
+
 
 def _get_adapter(dotted_path: str) -> Any:
     """Import and instantiate an adapter class from a dotted path."""
     cls = import_string(dotted_path)
     return cls()
+
+
+def _parse_pagination(request: HttpRequest) -> tuple[int, int]:
+    """Parse and validate SCIM pagination query parameters."""
+    try:
+        start_index = int(request.GET.get("startIndex", 1))
+        count = int(request.GET.get("count", 100))
+    except (TypeError, ValueError) as exc:
+        raise BadRequestError("startIndex and count must be integers") from exc
+
+    if start_index < 1:
+        raise BadRequestError("startIndex must be >= 1")
+    if start_index > MAX_START_INDEX:
+        raise BadRequestError(f"startIndex must be <= {MAX_START_INDEX}")
+    if count < 0:
+        raise BadRequestError("count must be >= 0")
+    if count > MAX_PAGE_SIZE:
+        raise BadRequestError(f"count must be <= {MAX_PAGE_SIZE}")
+    return start_index, count
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -129,8 +151,7 @@ class UserListView(SCIMView):
 
         # Pagination (SCIM uses 1-based startIndex)
         total = qs.count()
-        start_index = max(1, int(request.GET.get("startIndex", 1)))
-        count = int(request.GET.get("count", 100))
+        start_index, count = _parse_pagination(request)
         offset = start_index - 1
         page = qs[offset : offset + count]
 
@@ -216,8 +237,7 @@ class GroupListView(SCIMView):
 
         # Pagination
         total = qs.count()
-        start_index = max(1, int(request.GET.get("startIndex", 1)))
-        count = int(request.GET.get("count", 100))
+        start_index, count = _parse_pagination(request)
         offset = start_index - 1
         page = qs[offset : offset + count]
 
