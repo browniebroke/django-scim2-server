@@ -181,6 +181,261 @@ class UserDetailViewTest(AuthenticatedTestCase):
         assert resp.status_code == 200
         assert resp.json()["active"] is False
 
+    def test_patch_user_replace_username(self) -> None:
+        scim_user = self._create_scim_user()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "replace", "path": "userName", "value": "renamed"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["userName"] == "renamed"
+        scim_user.refresh_from_db()
+        assert scim_user.user.username == "renamed"
+
+    def test_patch_user_replace_name_fields(self) -> None:
+        scim_user = self._create_scim_user()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "replace", "path": "name.givenName", "value": "First"},
+                {"op": "replace", "path": "name.familyName", "value": "Last"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"]["givenName"] == "First"
+        assert data["name"]["familyName"] == "Last"
+
+    def test_patch_user_replace_emails_list(self) -> None:
+        scim_user = self._create_scim_user()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {
+                    "op": "replace",
+                    "path": "emails",
+                    "value": [{"value": "new@example.com"}],
+                },
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["emails"][0]["value"] == "new@example.com"
+
+    def test_patch_user_replace_emails_value_path(self) -> None:
+        scim_user = self._create_scim_user()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "replace", "path": "emails.value", "value": "alt@example.com"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["emails"][0]["value"] == "alt@example.com"
+
+    def test_patch_user_replace_external_id(self) -> None:
+        scim_user = self._create_scim_user()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "replace", "path": "externalId", "value": "ext-999"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["externalId"] == "ext-999"
+
+    def test_patch_user_replace_name_dict(self) -> None:
+        scim_user = self._create_scim_user()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {
+                    "op": "replace",
+                    "path": "name",
+                    "value": {"givenName": "G", "familyName": "F"},
+                },
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"]["givenName"] == "G"
+        assert data["name"]["familyName"] == "F"
+
+    def test_patch_user_bulk_replace_without_path(self) -> None:
+        scim_user = self._create_scim_user()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {
+                    "op": "replace",
+                    "value": {"userName": "bulk", "active": False},
+                },
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["userName"] == "bulk"
+        assert data["active"] is False
+
+    def test_patch_user_remove_given_name(self) -> None:
+        user = User.objects.create_user(
+            username="rm", first_name="First", last_name="Last"
+        )
+        scim_user = SCIMUser.objects.create(user=user, scim_username="rm")
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "remove", "path": "name.givenName"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["name"]["givenName"] == ""
+
+    def test_patch_user_remove_family_name(self) -> None:
+        user = User.objects.create_user(username="rm2", first_name="F", last_name="L")
+        scim_user = SCIMUser.objects.create(user=user, scim_username="rm2")
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "remove", "path": "name.familyName"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["name"]["familyName"] == ""
+
+    def test_patch_user_remove_emails(self) -> None:
+        user = User.objects.create_user(username="rm3", email="old@ex.com")
+        scim_user = SCIMUser.objects.create(user=user, scim_username="rm3")
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "remove", "path": "emails"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        assert "emails" not in resp.json()
+
+    def test_patch_user_remove_external_id(self) -> None:
+        user = User.objects.create_user(username="rm4")
+        scim_user = SCIMUser.objects.create(
+            user=user, scim_username="rm4", external_id="ext-old"
+        )
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "remove", "path": "externalId"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        assert "externalId" not in resp.json()
+
+    def test_patch_user_replace_name_dict_partial(self) -> None:
+        user = User.objects.create_user(
+            username="partial", first_name="Old", last_name="Name"
+        )
+        scim_user = SCIMUser.objects.create(user=user, scim_username="partial")
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "replace", "path": "name", "value": {"givenName": "Only"}},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"]["givenName"] == "Only"
+        assert data["name"]["familyName"] == "Name"
+
+    def test_patch_user_unsupported_op(self) -> None:
+        scim_user = self._create_scim_user()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "invalid", "path": "active", "value": True},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 400
+
+    def test_patch_user_remove_without_path(self) -> None:
+        scim_user = self._create_scim_user()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "remove"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 400
+
     def test_delete_user(self) -> None:
         scim_user = self._create_scim_user()
         resp = self.client.delete(f"/scim/v2/Users/{scim_user.id}")
@@ -275,6 +530,263 @@ class GroupDetailViewTest(AuthenticatedTestCase):
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["members"]) == 1
+
+    def test_patch_group_replace_display_name(self) -> None:
+        scim_group = self._create_scim_group()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "replace", "path": "displayName", "value": "Renamed"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["displayName"] == "Renamed"
+
+    def test_patch_group_replace_external_id(self) -> None:
+        scim_group = self._create_scim_group()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "replace", "path": "externalId", "value": "ext-g1"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["externalId"] == "ext-g1"
+
+    def test_patch_group_replace_members(self) -> None:
+        scim_group = self._create_scim_group()
+        user1 = User.objects.create_user(username="rep1")
+        SCIMUser.objects.create(user=user1, scim_username="rep1")
+        user2 = User.objects.create_user(username="rep2")
+        su2 = SCIMUser.objects.create(user=user2, scim_username="rep2")
+        # Add user1 first
+        scim_group.group.user_set.add(user1)
+        # Replace with user2 only
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {
+                    "op": "replace",
+                    "path": "members",
+                    "value": [{"value": str(su2.id)}],
+                },
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        members = resp.json()["members"]
+        assert len(members) == 1
+        assert members[0]["value"] == str(su2.id)
+
+    def test_patch_group_remove_members(self) -> None:
+        scim_group = self._create_scim_group()
+        user = User.objects.create_user(username="rem1")
+        su = SCIMUser.objects.create(user=user, scim_username="rem1")
+        scim_group.group.user_set.add(user)
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {
+                    "op": "remove",
+                    "path": "members",
+                    "value": [{"value": str(su.id)}],
+                },
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["members"] == []
+
+    def test_patch_group_remove_member_by_filter(self) -> None:
+        scim_group = self._create_scim_group()
+        user = User.objects.create_user(username="filt1")
+        su = SCIMUser.objects.create(user=user, scim_username="filt1")
+        scim_group.group.user_set.add(user)
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {
+                    "op": "remove",
+                    "path": f'members[value eq "{su.id}"]',
+                },
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["members"] == []
+
+    def test_patch_group_bulk_replace_without_path(self) -> None:
+        scim_group = self._create_scim_group()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {
+                    "op": "replace",
+                    "value": {"displayName": "Bulk", "externalId": "ext-b"},
+                },
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["displayName"] == "Bulk"
+        assert data["externalId"] == "ext-b"
+
+    def test_patch_group_remove_member_by_filter_nonexistent(self) -> None:
+        scim_group = self._create_scim_group()
+        import uuid
+
+        fake_id = uuid.uuid4()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {
+                    "op": "remove",
+                    "path": f'members[value eq "{fake_id}"]',
+                },
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+
+    def test_patch_group_members_not_a_list(self) -> None:
+        scim_group = self._create_scim_group()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "add", "path": "members", "value": "not-a-list"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 400
+
+    def test_patch_group_replace_members_not_a_list(self) -> None:
+        scim_group = self._create_scim_group()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "replace", "path": "members", "value": "not-a-list"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 400
+
+    def test_patch_group_remove_members_not_a_list(self) -> None:
+        scim_group = self._create_scim_group()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "remove", "path": "members", "value": "not-a-list"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 400
+
+    def test_patch_group_remove_member_bad_filter(self) -> None:
+        scim_group = self._create_scim_group()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "remove", "path": "members[bad filter]"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 400
+
+    def test_patch_group_remove_external_id(self) -> None:
+        group = Group.objects.create(name="extgrp")
+        scim_group = SCIMGroup.objects.create(
+            group=group, display_name="extgrp", external_id="ext-old"
+        )
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "remove", "path": "externalId"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        assert "externalId" not in resp.json()
+
+    def test_patch_group_unsupported_path(self) -> None:
+        scim_group = self._create_scim_group()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "replace", "path": "nonsense", "value": "x"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 400
+
+    def test_patch_group_remove_without_path(self) -> None:
+        scim_group = self._create_scim_group()
+        payload = {
+            "schemas": [URN_PATCH_OP],
+            "Operations": [
+                {"op": "remove"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 400
 
     def test_delete_group(self) -> None:
         scim_group = self._create_scim_group()
