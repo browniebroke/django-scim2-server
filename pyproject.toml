@@ -154,6 +154,7 @@ overrides = [
 ]
 
 [tool.semantic_release]
+allow_zero_version = true
 version_toml = [ "pyproject.toml:project.version" ]
 version_variables = [
   "src/django_scim2_server/__init__.py:__version__",
