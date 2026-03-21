@@ -436,6 +436,31 @@ class UserDetailViewTest(AuthenticatedTestCase):
         )
         assert resp.status_code == 400
 
+    def test_patch_user_missing_schema(self) -> None:
+        scim_user = self._create_scim_user()
+        payload = {
+            "schemas": [],
+            "Operations": [{"op": "replace", "path": "active", "value": False}],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 400
+        assert "PatchOp schema required" in resp.json()["detail"]
+
+    def test_patch_user_missing_operations_key(self) -> None:
+        scim_user = self._create_scim_user()
+        payload = {"schemas": [URN_PATCH_OP]}
+        resp = self.client.patch(
+            f"/scim/v2/Users/{scim_user.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 400
+        assert "Operations is required" in resp.json()["detail"]
+
     def test_delete_user(self) -> None:
         scim_user = self._create_scim_user()
         resp = self.client.delete(f"/scim/v2/Users/{scim_user.id}")
@@ -473,6 +498,14 @@ class GroupListViewTest(AuthenticatedTestCase):
         data = resp.json()
         assert data["displayName"] == "Engineering"
         assert Group.objects.filter(name="Engineering").exists()
+
+    def test_list_with_filter(self) -> None:
+        group = Group.objects.create(name="Filtered")
+        SCIMGroup.objects.create(group=group, display_name="Filtered")
+        resp = self.client.get('/scim/v2/Groups?filter=displayName eq "Filtered"')
+        data = resp.json()
+        assert data["totalResults"] == 1
+        assert data["Resources"][0]["displayName"] == "Filtered"
 
     def test_create_group_missing_name(self) -> None:
         payload: dict[str, Any] = {}
@@ -787,6 +820,39 @@ class GroupDetailViewTest(AuthenticatedTestCase):
             content_type=SCIM_CONTENT_TYPE,
         )
         assert resp.status_code == 400
+
+    def test_get_group_not_found(self) -> None:
+        import uuid
+
+        resp = self.client.get(f"/scim/v2/Groups/{uuid.uuid4()}")
+        assert resp.status_code == 404
+
+    def test_patch_group_missing_schema(self) -> None:
+        scim_group = self._create_scim_group()
+        payload = {
+            "schemas": [],
+            "Operations": [
+                {"op": "replace", "path": "displayName", "value": "X"},
+            ],
+        }
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 400
+        assert "PatchOp schema required" in resp.json()["detail"]
+
+    def test_patch_group_missing_operations_key(self) -> None:
+        scim_group = self._create_scim_group()
+        payload = {"schemas": [URN_PATCH_OP]}
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(payload),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 400
+        assert "Operations is required" in resp.json()["detail"]
 
     def test_delete_group(self) -> None:
         scim_group = self._create_scim_group()

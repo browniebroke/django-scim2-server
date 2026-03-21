@@ -55,8 +55,6 @@ class SCIMView(View):
             return scim_error_response(exc)
         except json.JSONDecodeError:
             return scim_error_response(BadRequestError("Invalid JSON in request body"))
-        if isinstance(response, JsonResponse) and not response.get("Content-Type"):
-            response["Content-Type"] = SCIM_CONTENT_TYPE
         return response
 
     def check_auth(self, request: HttpRequest) -> bool:
