@@ -91,6 +91,7 @@ lint.ignore = [
   "D212", # Multi-line docstring summary should start at the first line
   "D401", # First line of docstring should be in imperative mood
 ]
+lint.per-file-ignores."**/migrations/*" = [ "D100", "D101", "I001", "RUF012" ]
 lint.per-file-ignores."conftest.py" = [ "D100" ]
 lint.per-file-ignores."docs/conf.py" = [ "D100" ]
 lint.per-file-ignores."setup.py" = [ "D100" ]
