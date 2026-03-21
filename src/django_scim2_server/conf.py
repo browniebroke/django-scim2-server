@@ -33,6 +33,9 @@ class AppSettings:
     SCIM2_SERVER_GROUP_ADAPTER: str = "django_scim2_server.adapters.DefaultGroupAdapter"
     """Dotted path to the group adapter class."""
 
+    SCIM2_SERVER_AUTH_CHECK: str = "django_scim2_server.auth.is_superuser"
+    """Dotted path to a callable ``(HttpRequest) -> bool`` for access control."""
+
     def __getattribute__(self, __name: str) -> Any:
         """
         Check if a Django project settings should override the app default.

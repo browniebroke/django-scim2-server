@@ -46,7 +46,8 @@ class SCIMView(View):
 
     def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         """Dispatch with SCIM error handling and content type."""
-        if not self.check_auth(request):
+        auth_check = import_string(app_settings.SCIM2_SERVER_AUTH_CHECK)
+        if not auth_check(request):
             error = SCIMError(detail="Authentication required", status=401)
             return scim_error_response(error)
         try:
@@ -56,10 +57,6 @@ class SCIMView(View):
         except json.JSONDecodeError:
             return scim_error_response(BadRequestError("Invalid JSON in request body"))
         return response
-
-    def check_auth(self, request: HttpRequest) -> bool:
-        """Check if the request is authenticated. Override for custom auth."""
-        return bool(request.user and request.user.is_authenticated)
 
     def scim_response(
         self,

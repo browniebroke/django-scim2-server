@@ -41,6 +41,27 @@ class ServiceProviderConfigViewTest(AuthenticatedTestCase):
         resp = self.client.get("/scim/v2/ServiceProviderConfig")
         assert resp.status_code == 401
 
+    def test_non_superuser_rejected(self) -> None:
+        regular = User.objects.create_user(
+            username="regular",
+            password="regular123",  # noqa: S106
+        )
+        self.client.force_login(regular)
+        resp = self.client.get("/scim/v2/ServiceProviderConfig")
+        assert resp.status_code == 401
+
+    def test_custom_auth_check(self) -> None:
+        regular = User.objects.create_user(
+            username="regular2",
+            password="regular123",  # noqa: S106
+        )
+        self.client.force_login(regular)
+        with self.settings(
+            SCIM2_SERVER_AUTH_CHECK="django_scim2_server.auth.is_authenticated",
+        ):
+            resp = self.client.get("/scim/v2/ServiceProviderConfig")
+        assert resp.status_code == 200
+
 
 class ResourceTypesViewTest(AuthenticatedTestCase):
     """Tests for GET /ResourceTypes."""
