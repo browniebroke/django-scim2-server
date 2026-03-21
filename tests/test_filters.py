@@ -86,3 +86,36 @@ class TestParseFilter:
     def test_gt_lt(self) -> None:
         q = parse_filter("externalId gt 5", {"externalId": "external_id"})
         assert q == Q(external_id__gt=5)
+
+    def test_null_value(self) -> None:
+        q = parse_filter("externalId eq null", FILTER_MAP)
+        assert q == Q(external_id__exact=None)
+
+    def test_float_value(self) -> None:
+        q = parse_filter("externalId gt 3.14", {"externalId": "external_id"})
+        assert q == Q(external_id__gt=3.14)
+
+    def test_unexpected_character_raises(self) -> None:
+        with pytest.raises(InvalidFilterError, match="Unexpected character"):
+            parse_filter("userName eq @bad", FILTER_MAP)
+
+    def test_trailing_tokens_raises(self) -> None:
+        with pytest.raises(InvalidFilterError, match="Unexpected tokens"):
+            parse_filter('userName eq "john" "extra"', FILTER_MAP)
+
+    def test_missing_operator_raises(self) -> None:
+        with pytest.raises(InvalidFilterError, match="Expected operator"):
+            parse_filter('userName "john"', FILTER_MAP)
+
+    def test_unclosed_paren_raises(self) -> None:
+        with pytest.raises(InvalidFilterError, match="Expected rparen"):
+            parse_filter('(userName eq "john"', FILTER_MAP)
+
+    def test_eq_false(self) -> None:
+        q = parse_filter("active eq false", FILTER_MAP)
+        assert q == Q(active__exact=False)
+
+    def test_ge_le(self) -> None:
+        fm = {"externalId": "external_id"}
+        assert parse_filter("externalId ge 5", fm) == Q(external_id__gte=5)
+        assert parse_filter("externalId le 5", fm) == Q(external_id__lte=5)
