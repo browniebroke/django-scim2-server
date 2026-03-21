@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 from django.db import transaction
 
@@ -14,6 +16,8 @@ if TYPE_CHECKING:
         BaseGroupAdapter,
         BaseUserAdapter,
     )
+
+MEMBER_FILTER_VALUE_EQ_RE = re.compile(r'value\s+eq\s+"([^"]+)"')
 
 
 def _apply_user_op(
@@ -150,14 +154,18 @@ def _remove_group_members(scim_obj: SCIMGroup, value: Any) -> None:
 
 def _remove_group_member_by_filter(scim_obj: SCIMGroup, path: str) -> None:
     """Remove a group member by sub-filter like ``members[value eq "uuid"]``."""
-    import re
-
-    match = re.search(r'value\s+eq\s+"([^"]+)"', path)
+    match = MEMBER_FILTER_VALUE_EQ_RE.search(path)
     if not match:
-        raise BadRequestError(f"Cannot parse member filter: {path}")
+        raise BadRequestError("Cannot parse member filter")
     member_id = match.group(1)
+
     try:
-        scim_user = SCIMUser.objects.select_related("user").get(id=member_id)
+        member_uuid = UUID(member_id)
+    except ValueError as exc:
+        raise BadRequestError("Cannot parse member filter") from exc
+
+    try:
+        scim_user = SCIMUser.objects.select_related("user").get(id=member_uuid)
     except SCIMUser.DoesNotExist:
         return  # Silently ignore non-existent members
     scim_obj.group.user_set.remove(scim_user.user)
