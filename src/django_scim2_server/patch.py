@@ -17,6 +17,8 @@ if TYPE_CHECKING:
         BaseUserAdapter,
     )
 
+MEMBER_FILTER_VALUE_EQ_RE = re.compile(r'value\s+eq\s+"([^"]+)"')
+
 
 def _apply_user_op(
     scim_obj: SCIMUser,
@@ -152,7 +154,7 @@ def _remove_group_members(scim_obj: SCIMGroup, value: Any) -> None:
 
 def _remove_group_member_by_filter(scim_obj: SCIMGroup, path: str) -> None:
     """Remove a group member by sub-filter like ``members[value eq "uuid"]``."""
-    match = re.search(r'value\s+eq\s+"([^"]+)"', path)
+    match = MEMBER_FILTER_VALUE_EQ_RE.search(path)
     if not match:
         raise BadRequestError("Cannot parse member filter")
     member_id = match.group(1)

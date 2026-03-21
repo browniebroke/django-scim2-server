@@ -33,7 +33,10 @@ from django_scim2_server.filters import parse_filter
 
 logger = logging.getLogger(__name__)
 
+# Bound page size to mitigate resource-exhaustion requests while remaining generous.
 MAX_PAGE_SIZE = 1000
+# Bound offset to avoid pathological deep-offset scans on large tables.
+# One million keeps compatibility for large tenants while still rejecting extreme abuse.
 MAX_START_INDEX = 1000000
 
 
