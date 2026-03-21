@@ -51,7 +51,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv pip install --system tox tox-uv
+      - run: uv tool install tox --with tox-uv
         shell: bash
       - run: tox -f py$(echo ${{ matrix.python-version }} | tr -d .)
         shell: bash
