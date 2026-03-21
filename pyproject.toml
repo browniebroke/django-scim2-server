@@ -4,7 +4,7 @@ requires = [ "setuptools>=77.0.3" ]
 
 [project]
 name = "django-scim2-server"
-version = "1.0.0"
+version = "0.0.0"
 description = "An implementation of the System for Cross-domain Identity Management (SCIM) specification for your Django project."
 readme = "README.md"
 license = "MIT"
@@ -91,6 +91,7 @@ lint.ignore = [
   "D212", # Multi-line docstring summary should start at the first line
   "D401", # First line of docstring should be in imperative mood
 ]
+lint.per-file-ignores."**/migrations/*" = [ "D100", "D101", "I001", "RUF012" ]
 lint.per-file-ignores."conftest.py" = [ "D100" ]
 lint.per-file-ignores."docs/conf.py" = [ "D100" ]
 lint.per-file-ignores."setup.py" = [ "D100" ]
@@ -153,6 +154,7 @@ overrides = [
 ]
 
 [tool.semantic_release]
+allow_zero_version = true
 version_toml = [ "pyproject.toml:project.version" ]
 version_variables = [
   "src/django_scim2_server/__init__.py:__version__",

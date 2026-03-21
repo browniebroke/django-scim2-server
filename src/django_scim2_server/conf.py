@@ -21,8 +21,20 @@ SETTINGS_PREFIX = "SCIM2_SERVER_"
 class AppSettings:
     """Access this instance as `.conf.app_settings`."""
 
-    SCIM2_SERVER_ENABLED: bool = True
-    """Whether the app is enabled (dummy setting to demo usage)."""
+    SCIM2_SERVER_USER_MODEL: str = "auth.User"
+    """Target user model (app_label.ModelName)."""
+
+    SCIM2_SERVER_GROUP_MODEL: str = "auth.Group"
+    """Target group model (app_label.ModelName)."""
+
+    SCIM2_SERVER_USER_ADAPTER: str = "django_scim2_server.adapters.DefaultUserAdapter"
+    """Dotted path to the user adapter class."""
+
+    SCIM2_SERVER_GROUP_ADAPTER: str = "django_scim2_server.adapters.DefaultGroupAdapter"
+    """Dotted path to the group adapter class."""
+
+    SCIM2_SERVER_AUTH_CHECK: str = "django_scim2_server.auth.is_superuser"
+    """Dotted path to a callable ``(HttpRequest) -> bool`` for access control."""
 
     def __getattribute__(self, __name: str) -> Any:
         """

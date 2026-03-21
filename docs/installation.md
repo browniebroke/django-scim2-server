@@ -17,4 +17,21 @@ INSTALLED_APPS = [
 ]
 ```
 
-Next, see the {ref}`section about usage <usage>` to see how to use it.
+Include the SCIM URL routes in your root URL configuration:
+
+```python
+from django.urls import include, path
+
+urlpatterns = [
+    # ...
+    path("scim/v2/", include("django_scim2_server.urls")),
+]
+```
+
+Run migrations to create the SCIM database tables:
+
+```bash
+python manage.py migrate
+```
+
+Next, see the {ref}`section about usage <usage>` to learn how to configure and use the app.
