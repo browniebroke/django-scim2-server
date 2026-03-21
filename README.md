@@ -38,7 +38,7 @@
 
 ---
 
-An implementation of the System for Cross-domain Identity Management (SCIM) specification for your Django project. 
+An implementation of the System for Cross-domain Identity Management (SCIM) specification for your Django project.
 
 ## Installation
 
