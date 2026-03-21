@@ -420,7 +420,7 @@ wheels = [
 
 [[package]]
 name = "django-scim2-server"
-version = "0.0.0"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "django", version = "4.2.29", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'group-19-django-scim2-server-django42' or (extra == 'group-19-django-scim2-server-django50' and extra == 'group-19-django-scim2-server-django51') or (extra == 'group-19-django-scim2-server-django50' and extra == 'group-19-django-scim2-server-django52') or (extra == 'group-19-django-scim2-server-django50' and extra == 'group-19-django-scim2-server-django60') or (extra == 'group-19-django-scim2-server-django51' and extra == 'group-19-django-scim2-server-django52') or (extra == 'group-19-django-scim2-server-django51' and extra == 'group-19-django-scim2-server-django60') or (extra == 'group-19-django-scim2-server-django52' and extra == 'group-19-django-scim2-server-django60')" },
