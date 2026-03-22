@@ -11,6 +11,10 @@ from django.utils.decorators import method_decorator
 from django.utils.module_loading import import_string
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
+from pydantic import BaseModel
+from scim2_models import Group as SCIMGroupModel
+from scim2_models import ListResponse, ResourceType, Schema
+from scim2_models import User as SCIMUserModel
 
 from django_scim2_server.conf import app_settings
 from django_scim2_server.constants import (
@@ -20,7 +24,6 @@ from django_scim2_server.constants import (
     SCHEMA_USER,
     SCIM_CONTENT_TYPE,
     SERVICE_PROVIDER_CONFIG,
-    URN_LIST_RESPONSE,
     URN_PATCH_OP,
 )
 from django_scim2_server.exceptions import (
@@ -85,11 +88,15 @@ class SCIMView(View):
 
     def scim_response(
         self,
-        data: dict[str, Any],
+        data: BaseModel | dict[str, Any],
         status: int = 200,
     ) -> JsonResponse:
         """Return a JsonResponse with SCIM content type."""
-        return JsonResponse(data, status=status, content_type=SCIM_CONTENT_TYPE)
+        if isinstance(data, BaseModel):
+            json_data = data.model_dump(mode="json", by_alias=True, exclude_none=True)
+        else:
+            json_data = data
+        return JsonResponse(json_data, status=status, content_type=SCIM_CONTENT_TYPE)
 
     def parse_body(self, request: HttpRequest) -> dict[str, Any]:
         """Parse JSON body from request."""
@@ -112,13 +119,11 @@ class ResourceTypesView(SCIMView):
 
     def get(self, request: HttpRequest) -> JsonResponse:
         """Return the list of resource types."""
-        return self.scim_response(
-            {
-                "schemas": [URN_LIST_RESPONSE],
-                "totalResults": 2,
-                "Resources": [RESOURCE_TYPE_USER, RESOURCE_TYPE_GROUP],
-            },
+        response = ListResponse[ResourceType](
+            total_results=2,
+            resources=[RESOURCE_TYPE_USER, RESOURCE_TYPE_GROUP],
         )
+        return self.scim_response(response)
 
 
 class SchemasView(SCIMView):
@@ -126,13 +131,11 @@ class SchemasView(SCIMView):
 
     def get(self, request: HttpRequest) -> JsonResponse:
         """Return the list of schemas."""
-        return self.scim_response(
-            {
-                "schemas": [URN_LIST_RESPONSE],
-                "totalResults": 2,
-                "Resources": [SCHEMA_USER, SCHEMA_GROUP],
-            },
+        response = ListResponse[Schema](
+            total_results=2,
+            resources=[SCHEMA_USER, SCHEMA_GROUP],
         )
+        return self.scim_response(response)
 
 
 # Resource views
@@ -159,15 +162,13 @@ class UserListView(SCIMView):
         page = qs[offset : offset + count]
 
         resources = [adapter.to_scim(obj, request) for obj in page]
-        return self.scim_response(
-            {
-                "schemas": [URN_LIST_RESPONSE],
-                "totalResults": total,
-                "startIndex": start_index,
-                "itemsPerPage": len(resources),
-                "Resources": resources,
-            },
+        response = ListResponse[SCIMUserModel](
+            total_results=total,
+            start_index=start_index,
+            items_per_page=len(resources),
+            resources=resources,
         )
+        return self.scim_response(response)
 
     def post(self, request: HttpRequest) -> JsonResponse:
         """Create a new user."""
@@ -245,15 +246,13 @@ class GroupListView(SCIMView):
         page = qs[offset : offset + count]
 
         resources = [adapter.to_scim(obj, request) for obj in page]
-        return self.scim_response(
-            {
-                "schemas": [URN_LIST_RESPONSE],
-                "totalResults": total,
-                "startIndex": start_index,
-                "itemsPerPage": len(resources),
-                "Resources": resources,
-            },
+        response = ListResponse[SCIMGroupModel](
+            total_results=total,
+            start_index=start_index,
+            items_per_page=len(resources),
+            resources=resources,
         )
+        return self.scim_response(response)
 
     def post(self, request: HttpRequest) -> JsonResponse:
         """Create a new group."""

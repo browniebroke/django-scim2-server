@@ -7,8 +7,11 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.db import transaction
+from pydantic import ValidationError
+from scim2_models import Email, GroupMember, Meta, Name
+from scim2_models import Group as SCIMGroupModel
+from scim2_models import User as SCIMUserModel
 
-from django_scim2_server.constants import URN_GROUP, URN_USER
 from django_scim2_server.exceptions import BadRequestError, ConflictError
 from django_scim2_server.models import SCIMGroup, SCIMUser
 
@@ -26,8 +29,8 @@ class BaseUserAdapter:
         """Return the base queryset for SCIM users."""
         return SCIMUser.objects.select_related("user")
 
-    def to_scim(self, scim_obj: SCIMUser, request: HttpRequest) -> dict[str, Any]:
-        """Convert a SCIMUser instance to a SCIM JSON dict."""
+    def to_scim(self, scim_obj: SCIMUser, request: HttpRequest) -> SCIMUserModel:
+        """Convert a SCIMUser instance to a SCIM User model."""
         raise NotImplementedError
 
     def from_scim(
@@ -60,8 +63,8 @@ class BaseGroupAdapter:
         """Return the base queryset for SCIM groups."""
         return SCIMGroup.objects.select_related("group")
 
-    def to_scim(self, scim_obj: SCIMGroup, request: HttpRequest) -> dict[str, Any]:
-        """Convert a SCIMGroup instance to a SCIM JSON dict."""
+    def to_scim(self, scim_obj: SCIMGroup, request: HttpRequest) -> SCIMGroupModel:
+        """Convert a SCIMGroup instance to a SCIM Group model."""
         raise NotImplementedError
 
     def from_scim(
@@ -103,31 +106,27 @@ class DefaultUserAdapter(BaseUserAdapter):
         "externalId": "external_id",
     }
 
-    def to_scim(self, scim_obj: SCIMUser, request: HttpRequest) -> dict[str, Any]:
-        """Convert a SCIMUser to SCIM JSON representation."""
+    def to_scim(self, scim_obj: SCIMUser, request: HttpRequest) -> SCIMUserModel:
+        """Convert a SCIMUser to a SCIM User pydantic model."""
         user = scim_obj.user
         location = _build_location(request, "Users", str(scim_obj.id))
-        result: dict[str, Any] = {
-            "schemas": [URN_USER],
-            "id": str(scim_obj.id),
-            "userName": scim_obj.scim_username,
-            "name": {
-                "givenName": user.first_name,
-                "familyName": user.last_name,
-            },
-            "active": scim_obj.active,
-            "meta": {
-                "resourceType": "User",
-                "created": scim_obj.created.isoformat(),
-                "lastModified": scim_obj.last_modified.isoformat(),
-                "location": location,
-            },
-        }
-        if user.email:
-            result["emails"] = [{"value": user.email, "primary": True}]
-        if scim_obj.external_id:
-            result["externalId"] = scim_obj.external_id
-        return result
+        return SCIMUserModel(
+            id=str(scim_obj.id),
+            external_id=scim_obj.external_id or None,
+            user_name=scim_obj.scim_username,
+            name=Name(
+                given_name=user.first_name,
+                family_name=user.last_name,
+            ),
+            emails=[Email(value=user.email, primary=True)] if user.email else None,
+            active=scim_obj.active,
+            meta=Meta(
+                resource_type="User",
+                created=scim_obj.created,
+                last_modified=scim_obj.last_modified,
+                location=location,
+            ),
+        )
 
     @transaction.atomic
     def from_scim(
@@ -136,15 +135,20 @@ class DefaultUserAdapter(BaseUserAdapter):
         scim_obj: SCIMUser | None = None,
     ) -> SCIMUser:
         """Create or update a SCIMUser from SCIM JSON data."""
-        user_name = data.get("userName")
+        try:
+            scim_user = SCIMUserModel.model_validate(data)
+        except ValidationError as exc:
+            raise BadRequestError(str(exc)) from exc
+
+        user_name = scim_user.user_name
         if not user_name:
             raise BadRequestError("userName is required")
 
-        name_data = data.get("name", {})
-        emails = data.get("emails", [])
-        email = emails[0]["value"] if emails else ""
-        external_id = data.get("externalId", "")
-        active = data.get("active", True)
+        name = scim_user.name or Name()
+        emails = scim_user.emails or []
+        email = str(emails[0].value) if emails and emails[0].value else ""
+        external_id = scim_user.external_id or ""
+        active = scim_user.active if scim_user.active is not None else True
 
         user_model = get_user_model()
 
@@ -154,8 +158,8 @@ class DefaultUserAdapter(BaseUserAdapter):
                 raise ConflictError(f"User with userName '{user_name}' already exists")
             user = user_model.objects.create(
                 username=user_name,
-                first_name=name_data.get("givenName", ""),
-                last_name=name_data.get("familyName", ""),
+                first_name=name.given_name or "",
+                last_name=name.family_name or "",
                 email=email,
                 is_active=active,
             )
@@ -180,8 +184,8 @@ class DefaultUserAdapter(BaseUserAdapter):
                     )
             user = scim_obj.user
             user.username = user_name
-            user.first_name = name_data.get("givenName", "")
-            user.last_name = name_data.get("familyName", "")
+            user.first_name = name.given_name or ""
+            user.last_name = name.family_name or ""
             user.email = email
             user.is_active = active
             user.save()
@@ -219,34 +223,31 @@ class DefaultGroupAdapter(BaseGroupAdapter):
         "externalId": "external_id",
     }
 
-    def to_scim(self, scim_obj: SCIMGroup, request: HttpRequest) -> dict[str, Any]:
-        """Convert a SCIMGroup to SCIM JSON representation."""
+    def to_scim(self, scim_obj: SCIMGroup, request: HttpRequest) -> SCIMGroupModel:
+        """Convert a SCIMGroup to a SCIM Group pydantic model."""
         location = _build_location(request, "Groups", str(scim_obj.id))
         members = []
         for user in scim_obj.group.user_set.select_related("scim").all():
             scim_user = getattr(user, "scim", None)
             if scim_user:
                 members.append(
-                    {
-                        "value": str(scim_user.id),
-                        "display": scim_user.scim_username,
-                    },
+                    GroupMember(
+                        value=str(scim_user.id),
+                        display=scim_user.scim_username,
+                    ),
                 )
-        result: dict[str, Any] = {
-            "schemas": [URN_GROUP],
-            "id": str(scim_obj.id),
-            "displayName": scim_obj.display_name,
-            "members": members,
-            "meta": {
-                "resourceType": "Group",
-                "created": scim_obj.created.isoformat(),
-                "lastModified": scim_obj.last_modified.isoformat(),
-                "location": location,
-            },
-        }
-        if scim_obj.external_id:
-            result["externalId"] = scim_obj.external_id
-        return result
+        return SCIMGroupModel(
+            id=str(scim_obj.id),
+            external_id=scim_obj.external_id or None,
+            display_name=scim_obj.display_name,
+            members=members,
+            meta=Meta(
+                resource_type="Group",
+                created=scim_obj.created,
+                last_modified=scim_obj.last_modified,
+                location=location,
+            ),
+        )
 
     @transaction.atomic
     def from_scim(
@@ -255,11 +256,16 @@ class DefaultGroupAdapter(BaseGroupAdapter):
         scim_obj: SCIMGroup | None = None,
     ) -> SCIMGroup:
         """Create or update a SCIMGroup from SCIM JSON data."""
-        display_name = data.get("displayName")
+        try:
+            scim_group = SCIMGroupModel.model_validate(data)
+        except ValidationError as exc:
+            raise BadRequestError(str(exc)) from exc
+
+        display_name = scim_group.display_name
         if not display_name:
             raise BadRequestError("displayName is required")
 
-        external_id = data.get("externalId", "")
+        external_id = scim_group.external_id or ""
 
         if scim_obj is None:
             # Create
@@ -278,22 +284,21 @@ class DefaultGroupAdapter(BaseGroupAdapter):
             scim_obj.save()
 
         # Handle members
-        members_data = data.get("members", [])
-        self._sync_members(scim_obj, members_data)
+        self._sync_members(scim_obj, scim_group.members or [])
 
         return scim_obj
 
     def _sync_members(
         self,
         scim_obj: SCIMGroup,
-        members_data: list[dict[str, Any]],
+        members: list[GroupMember],
     ) -> None:
         """Sync group membership from SCIM members list."""
-        if not members_data:
+        if not members:
             scim_obj.group.user_set.clear()
             return
 
-        member_ids = [m["value"] for m in members_data]
+        member_ids = [str(m.value) for m in members if m.value]
         scim_users = SCIMUser.objects.filter(id__in=member_ids).select_related("user")
         users = [su.user for su in scim_users]
         scim_obj.group.user_set.set(users)
