@@ -4,7 +4,7 @@ requires = [ "setuptools>=77.0.3" ]
 
 [project]
 name = "django-scim2-server"
-version = "0.1.1"
+version = "0.2.0"
 description = "An implementation of the System for Cross-domain Identity Management (SCIM) specification for your Django project."
 readme = "README.md"
 license = "MIT"

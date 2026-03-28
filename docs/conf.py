@@ -18,7 +18,7 @@ settings.configure(USE_I18N=False)
 project = "Django SCIM2 Server"
 copyright = "2026, Bruno Alla"
 author = "Bruno Alla"
-release = "0.1.1"
+release = "0.2.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

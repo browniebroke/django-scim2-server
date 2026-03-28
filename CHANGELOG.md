@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.0 (2026-03-28)
+
+### Features
+
+- Use scim2-models for serialization ([`f88dde6`](https://github.com/browniebroke/django-scim2-server/commit/f88dde65be5ee9ac9263899aea29ebcd1ef4dca6))
+
 ## v0.1.1 (2026-03-21)
 
 ### Bug fixes
