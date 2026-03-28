@@ -2,6 +2,21 @@
 
 from __future__ import annotations
 
+from scim2_models import (
+    Attribute,
+    AuthenticationScheme,
+    Bulk,
+    ChangePassword,
+    ETag,
+    Filter,
+    Meta,
+    Patch,
+    ResourceType,
+    Schema,
+    ServiceProviderConfig,
+    Sort,
+)
+
 SCIM_CONTENT_TYPE = "application/scim+json"
 
 # Schema URNs
@@ -16,187 +31,182 @@ URN_SERVICE_PROVIDER_CONFIG = (
 URN_RESOURCE_TYPE = "urn:ietf:params:scim:schemas:core:2.0:ResourceType"
 URN_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:Schema"
 
-SERVICE_PROVIDER_CONFIG: dict[str, object] = {
-    "schemas": [URN_SERVICE_PROVIDER_CONFIG],
-    "documentationUri": "https://tools.ietf.org/html/rfc7644",
-    "patch": {"supported": True},
-    "bulk": {"supported": False, "maxOperations": 0, "maxPayloadSize": 0},
-    "filter": {"supported": True, "maxResults": 200},
-    "changePassword": {"supported": False},
-    "sort": {"supported": False},
-    "etag": {"supported": False},
-    "authenticationSchemes": [
-        {
-            "type": "oauthbearertoken",
-            "name": "OAuth Bearer Token",
-            "description": (
-                "Authentication scheme using the OAuth Bearer Token Standard"
-            ),
-            "specUri": "https://tools.ietf.org/html/rfc6750",
-        },
+SERVICE_PROVIDER_CONFIG = ServiceProviderConfig(
+    documentation_uri="https://tools.ietf.org/html/rfc7644",
+    patch=Patch(supported=True),
+    bulk=Bulk(supported=False, max_operations=0, max_payload_size=0),
+    filter=Filter(supported=True, max_results=200),
+    change_password=ChangePassword(supported=False),
+    sort=Sort(supported=False),
+    etag=ETag(supported=False),
+    authentication_schemes=[
+        AuthenticationScheme(
+            type="oauthbearertoken",
+            name="OAuth Bearer Token",
+            description=("Authentication scheme using the OAuth Bearer Token Standard"),
+            spec_uri="https://tools.ietf.org/html/rfc6750",
+        ),
     ],
-}
+)
 
-RESOURCE_TYPE_USER: dict[str, object] = {
-    "schemas": [URN_RESOURCE_TYPE],
-    "id": "User",
-    "name": "User",
-    "endpoint": "/Users",
-    "description": "User Account",
-    "schema": URN_USER,
-}
+RESOURCE_TYPE_USER = ResourceType(
+    id="User",
+    name="User",
+    endpoint="/Users",
+    description="User Account",
+    schema_=URN_USER,
+)
 
-RESOURCE_TYPE_GROUP: dict[str, object] = {
-    "schemas": [URN_RESOURCE_TYPE],
-    "id": "Group",
-    "name": "Group",
-    "endpoint": "/Groups",
-    "description": "Group",
-    "schema": URN_GROUP,
-}
+RESOURCE_TYPE_GROUP = ResourceType(
+    id="Group",
+    name="Group",
+    endpoint="/Groups",
+    description="Group",
+    schema_=URN_GROUP,
+)
 
-SCHEMA_USER: dict[str, object] = {
-    "id": URN_USER,
-    "name": "User",
-    "description": "User Account",
-    "attributes": [
-        {
-            "name": "userName",
-            "type": "string",
-            "multiValued": False,
-            "required": True,
-            "caseExact": False,
-            "mutability": "readWrite",
-            "returned": "default",
-            "uniqueness": "server",
-        },
-        {
-            "name": "name",
-            "type": "complex",
-            "multiValued": False,
-            "required": False,
-            "mutability": "readWrite",
-            "returned": "default",
-            "subAttributes": [
-                {
-                    "name": "givenName",
-                    "type": "string",
-                    "multiValued": False,
-                    "required": False,
-                    "mutability": "readWrite",
-                    "returned": "default",
-                },
-                {
-                    "name": "familyName",
-                    "type": "string",
-                    "multiValued": False,
-                    "required": False,
-                    "mutability": "readWrite",
-                    "returned": "default",
-                },
+SCHEMA_USER = Schema(
+    id=URN_USER,
+    name="User",
+    description="User Account",
+    attributes=[
+        Attribute(
+            name="userName",
+            type="string",
+            multi_valued=False,
+            required=True,
+            case_exact=False,
+            mutability="readWrite",
+            returned="default",
+            uniqueness="server",
+        ),
+        Attribute(
+            name="name",
+            type="complex",
+            multi_valued=False,
+            required=False,
+            mutability="readWrite",
+            returned="default",
+            sub_attributes=[
+                Attribute(
+                    name="givenName",
+                    type="string",
+                    multi_valued=False,
+                    required=False,
+                    mutability="readWrite",
+                    returned="default",
+                ),
+                Attribute(
+                    name="familyName",
+                    type="string",
+                    multi_valued=False,
+                    required=False,
+                    mutability="readWrite",
+                    returned="default",
+                ),
             ],
-        },
-        {
-            "name": "emails",
-            "type": "complex",
-            "multiValued": True,
-            "required": False,
-            "mutability": "readWrite",
-            "returned": "default",
-            "subAttributes": [
-                {
-                    "name": "value",
-                    "type": "string",
-                    "multiValued": False,
-                    "required": False,
-                    "mutability": "readWrite",
-                    "returned": "default",
-                },
-                {
-                    "name": "primary",
-                    "type": "boolean",
-                    "multiValued": False,
-                    "required": False,
-                    "mutability": "readWrite",
-                    "returned": "default",
-                },
+        ),
+        Attribute(
+            name="emails",
+            type="complex",
+            multi_valued=True,
+            required=False,
+            mutability="readWrite",
+            returned="default",
+            sub_attributes=[
+                Attribute(
+                    name="value",
+                    type="string",
+                    multi_valued=False,
+                    required=False,
+                    mutability="readWrite",
+                    returned="default",
+                ),
+                Attribute(
+                    name="primary",
+                    type="boolean",
+                    multi_valued=False,
+                    required=False,
+                    mutability="readWrite",
+                    returned="default",
+                ),
             ],
-        },
-        {
-            "name": "active",
-            "type": "boolean",
-            "multiValued": False,
-            "required": False,
-            "mutability": "readWrite",
-            "returned": "default",
-        },
-        {
-            "name": "externalId",
-            "type": "string",
-            "multiValued": False,
-            "required": False,
-            "caseExact": True,
-            "mutability": "readWrite",
-            "returned": "default",
-        },
+        ),
+        Attribute(
+            name="active",
+            type="boolean",
+            multi_valued=False,
+            required=False,
+            mutability="readWrite",
+            returned="default",
+        ),
+        Attribute(
+            name="externalId",
+            type="string",
+            multi_valued=False,
+            required=False,
+            case_exact=True,
+            mutability="readWrite",
+            returned="default",
+        ),
     ],
-    "meta": {
-        "resourceType": "Schema",
-        "location": "/Schemas/" + URN_USER,
-    },
-}
+    meta=Meta(
+        resource_type="Schema",
+        location="/Schemas/" + URN_USER,
+    ),
+)
 
-SCHEMA_GROUP: dict[str, object] = {
-    "id": URN_GROUP,
-    "name": "Group",
-    "description": "Group",
-    "attributes": [
-        {
-            "name": "displayName",
-            "type": "string",
-            "multiValued": False,
-            "required": True,
-            "mutability": "readWrite",
-            "returned": "default",
-        },
-        {
-            "name": "members",
-            "type": "complex",
-            "multiValued": True,
-            "required": False,
-            "mutability": "readWrite",
-            "returned": "default",
-            "subAttributes": [
-                {
-                    "name": "value",
-                    "type": "string",
-                    "multiValued": False,
-                    "required": False,
-                    "mutability": "immutable",
-                    "returned": "default",
-                },
-                {
-                    "name": "display",
-                    "type": "string",
-                    "multiValued": False,
-                    "required": False,
-                    "mutability": "immutable",
-                    "returned": "default",
-                },
+SCHEMA_GROUP = Schema(
+    id=URN_GROUP,
+    name="Group",
+    description="Group",
+    attributes=[
+        Attribute(
+            name="displayName",
+            type="string",
+            multi_valued=False,
+            required=True,
+            mutability="readWrite",
+            returned="default",
+        ),
+        Attribute(
+            name="members",
+            type="complex",
+            multi_valued=True,
+            required=False,
+            mutability="readWrite",
+            returned="default",
+            sub_attributes=[
+                Attribute(
+                    name="value",
+                    type="string",
+                    multi_valued=False,
+                    required=False,
+                    mutability="immutable",
+                    returned="default",
+                ),
+                Attribute(
+                    name="display",
+                    type="string",
+                    multi_valued=False,
+                    required=False,
+                    mutability="immutable",
+                    returned="default",
+                ),
             ],
-        },
-        {
-            "name": "externalId",
-            "type": "string",
-            "multiValued": False,
-            "required": False,
-            "caseExact": True,
-            "mutability": "readWrite",
-            "returned": "default",
-        },
+        ),
+        Attribute(
+            name="externalId",
+            type="string",
+            multi_valued=False,
+            required=False,
+            case_exact=True,
+            mutability="readWrite",
+            returned="default",
+        ),
     ],
-    "meta": {
-        "resourceType": "Schema",
-        "location": "/Schemas/" + URN_GROUP,
-    },
-}
+    meta=Meta(
+        resource_type="Schema",
+        location="/Schemas/" + URN_GROUP,
+    ),
+)

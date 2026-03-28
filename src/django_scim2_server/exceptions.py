@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from django.http import JsonResponse
+from scim2_models import Error
 
-from django_scim2_server.constants import SCIM_CONTENT_TYPE, URN_ERROR
+from django_scim2_server.constants import SCIM_CONTENT_TYPE
 
 
 class SCIMError(Exception):
@@ -59,11 +60,10 @@ class InvalidValueError(SCIMError):
 
 def scim_error_response(error: SCIMError) -> JsonResponse:
     """Build a SCIM-compliant error JsonResponse."""
-    body: dict[str, str | list[str]] = {
-        "schemas": [URN_ERROR],
-        "detail": error.detail,
-        "status": str(error.status),
-    }
-    if error.scim_type:
-        body["scimType"] = error.scim_type
+    err = Error(
+        detail=error.detail,
+        status=error.status,
+        scim_type=error.scim_type or None,
+    )
+    body = err.model_dump(mode="json", by_alias=True, exclude_none=True)
     return JsonResponse(body, status=error.status, content_type=SCIM_CONTENT_TYPE)

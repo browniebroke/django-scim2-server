@@ -10,6 +10,7 @@ from django.test import TestCase
 
 from django_scim2_server.constants import URN_PATCH_OP, URN_USER
 from django_scim2_server.models import SCIMGroup, SCIMUser
+from django_scim2_server.views import SCIMView
 
 SCIM_CONTENT_TYPE = "application/scim+json"
 
@@ -24,6 +25,21 @@ class AuthenticatedTestCase(TestCase):
             email="admin@example.com",
         )
         self.client.force_login(self.admin)
+
+
+class SCIMViewScimResponseTest(TestCase):
+    """Tests for SCIMView.scim_response with plain dict data."""
+
+    def test_scim_response_with_dict(self) -> None:
+        view = SCIMView()
+        data = {
+            "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
+            "detail": "test",
+        }
+        resp = view.scim_response(data, status=400)
+        assert resp.status_code == 400
+        assert resp["Content-Type"] == SCIM_CONTENT_TYPE
+        assert json.loads(resp.content) == data
 
 
 class ServiceProviderConfigViewTest(AuthenticatedTestCase):

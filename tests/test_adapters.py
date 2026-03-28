@@ -55,6 +55,11 @@ class DefaultUserAdapterTest(TestCase):
         with pytest.raises(BadRequestError):
             self.adapter.from_scim({"name": {"givenName": "No"}})
 
+    def test_from_scim_invalid_data_raises_bad_request(self) -> None:
+        data = {"userName": "ok", "emails": "not-a-list"}
+        with pytest.raises(BadRequestError):
+            self.adapter.from_scim(data)
+
     def test_from_scim_duplicate_username(self) -> None:
         user = User.objects.create_user(username="existing")
         SCIMUser.objects.create(user=user, scim_username="existing")
@@ -70,11 +75,13 @@ class DefaultUserAdapterTest(TestCase):
         )
         request = self._make_request()
         result = self.adapter.to_scim(scim_user, request)
-        assert result["userName"] == "test"
-        assert result["name"]["givenName"] == "Test"
-        assert result["emails"][0]["value"] == "t@ex.com"
-        assert result["externalId"] == "ext1"
-        assert "meta" in result
+        assert result.user_name == "test"
+        assert result.name is not None
+        assert result.name.given_name == "Test"
+        assert result.emails is not None
+        assert str(result.emails[0].value) == "t@ex.com"
+        assert result.external_id == "ext1"
+        assert result.meta is not None
 
     def test_delete_deactivates(self) -> None:
         user = User.objects.create_user(username="todel")
@@ -118,6 +125,11 @@ class DefaultGroupAdapterTest(TestCase):
         result.group.refresh_from_db()
         assert result.group.name == "New"
 
+    def test_from_scim_invalid_data_raises_bad_request(self) -> None:
+        data = {"displayName": 12345, "members": "not-a-list"}
+        with pytest.raises(BadRequestError):
+            self.adapter.from_scim(data)
+
     def test_from_scim_missing_name(self) -> None:
         with pytest.raises(BadRequestError):
             self.adapter.from_scim({})
@@ -131,9 +143,10 @@ class DefaultGroupAdapterTest(TestCase):
 
         request = self._make_request()
         result = self.adapter.to_scim(scim_group, request)
-        assert result["displayName"] == "Team"
-        assert len(result["members"]) == 1
-        assert result["members"][0]["value"] == str(scim_user.id)
+        assert result.display_name == "Team"
+        assert result.members is not None
+        assert len(result.members) == 1
+        assert result.members[0].value == str(scim_user.id)
 
     def test_delete_removes_group(self) -> None:
         group = Group.objects.create(name="Del")
