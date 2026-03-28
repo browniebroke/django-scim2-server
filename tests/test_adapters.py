@@ -55,6 +55,11 @@ class DefaultUserAdapterTest(TestCase):
         with pytest.raises(BadRequestError):
             self.adapter.from_scim({"name": {"givenName": "No"}})
 
+    def test_from_scim_invalid_data_raises_bad_request(self) -> None:
+        data = {"userName": "ok", "emails": "not-a-list"}
+        with pytest.raises(BadRequestError):
+            self.adapter.from_scim(data)
+
     def test_from_scim_duplicate_username(self) -> None:
         user = User.objects.create_user(username="existing")
         SCIMUser.objects.create(user=user, scim_username="existing")
@@ -119,6 +124,11 @@ class DefaultGroupAdapterTest(TestCase):
         assert result.display_name == "New"
         result.group.refresh_from_db()
         assert result.group.name == "New"
+
+    def test_from_scim_invalid_data_raises_bad_request(self) -> None:
+        data = {"displayName": 12345, "members": "not-a-list"}
+        with pytest.raises(BadRequestError):
+            self.adapter.from_scim(data)
 
     def test_from_scim_missing_name(self) -> None:
         with pytest.raises(BadRequestError):
