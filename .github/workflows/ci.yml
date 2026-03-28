@@ -58,7 +58,6 @@ jobs:
   release:
     needs:
       - test
-      - lint
       - commitlint
 
     runs-on: ubuntu-latest
