@@ -75,7 +75,7 @@ Ready to contribute? Here's how to set yourself up for local development.
    Or better, install the hooks once and have them run automatically each time you commit:
 
    ```shell
-   $ prek install
+   $ prek install -f
    ```
 
 7. Commit your changes and push your branch to GitHub:
