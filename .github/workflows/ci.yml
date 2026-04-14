@@ -64,6 +64,7 @@ jobs:
 
   release:
     needs:
+      - lint
       - test
       - commitlint
 
