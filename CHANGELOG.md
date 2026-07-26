@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.0 (2026-07-26)
+
+### Features
+
+- Add django 6.1 support ([`c4a8b2e`](https://github.com/browniebroke/django-scim2-server/commit/c4a8b2eec3635c605171fa3661d91d28160e8772))
+- Drop django < 5.2 support ([`7575433`](https://github.com/browniebroke/django-scim2-server/commit/7575433a26869507b10d6cef3c9a83ac54739cd1))
+
 ## v0.2.0 (2026-03-28)
 
 ### Features
