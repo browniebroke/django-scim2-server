@@ -26,6 +26,15 @@ INSTALLED_APPS = [
     "tests.testapp",
 ]
 
+SCIM2_SERVER_CONFIGS = {
+    # Unscoped: a single SCIM surface, e.g. the platform's own staff.
+    "default": {},
+    # Scoped: one SCIM surface per tenant, keyed off a URL kwarg.
+    "tenants": {
+        "SCOPE_URL_KWARG": "tenant",
+    },
+}
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",

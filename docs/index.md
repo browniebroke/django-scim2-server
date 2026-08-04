@@ -9,6 +9,8 @@
 installation
 configuration
 usage
+multi-config
+upgrading
 ```
 
 ```{toctree}
