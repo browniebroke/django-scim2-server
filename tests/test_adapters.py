@@ -9,13 +9,14 @@ from django.test import RequestFactory, TestCase
 from django_scim2_server.adapters import DefaultGroupAdapter, DefaultUserAdapter
 from django_scim2_server.exceptions import BadRequestError, ConflictError
 from django_scim2_server.models import SCIMGroup, SCIMUser
+from tests.utils import make_context
 
 
 class DefaultUserAdapterTest(TestCase):
     """Tests for the DefaultUserAdapter."""
 
     def setUp(self) -> None:
-        self.adapter = DefaultUserAdapter()
+        self.adapter = DefaultUserAdapter(make_context())
         self.factory = RequestFactory()
 
     def _make_request(self) -> object:
@@ -40,7 +41,9 @@ class DefaultUserAdapterTest(TestCase):
 
     def test_from_scim_update(self) -> None:
         user = User.objects.create_user(username="old")
-        scim_user = SCIMUser.objects.create(user=user, scim_username="old")
+        scim_user = SCIMUser.objects.create(
+            config="default", user=user, scim_username="old"
+        )
         data = {
             "userName": "updated",
             "name": {"givenName": "Up", "familyName": "Dated"},
@@ -62,7 +65,7 @@ class DefaultUserAdapterTest(TestCase):
 
     def test_from_scim_duplicate_username(self) -> None:
         user = User.objects.create_user(username="existing")
-        SCIMUser.objects.create(user=user, scim_username="existing")
+        SCIMUser.objects.create(config="default", user=user, scim_username="existing")
         with pytest.raises(ConflictError):
             self.adapter.from_scim({"userName": "existing"})
 
@@ -71,7 +74,7 @@ class DefaultUserAdapterTest(TestCase):
             username="test", first_name="Test", last_name="User", email="t@ex.com"
         )
         scim_user = SCIMUser.objects.create(
-            user=user, scim_username="test", external_id="ext1"
+            config="default", user=user, scim_username="test", external_id="ext1"
         )
         request = self._make_request()
         result = self.adapter.to_scim(scim_user, request)
@@ -85,7 +88,9 @@ class DefaultUserAdapterTest(TestCase):
 
     def test_delete_deactivates(self) -> None:
         user = User.objects.create_user(username="todel")
-        scim_user = SCIMUser.objects.create(user=user, scim_username="todel")
+        scim_user = SCIMUser.objects.create(
+            config="default", user=user, scim_username="todel"
+        )
         self.adapter.delete(scim_user)
         scim_user.refresh_from_db()
         assert scim_user.active is False
@@ -101,7 +106,7 @@ class DefaultGroupAdapterTest(TestCase):
     """Tests for the DefaultGroupAdapter."""
 
     def setUp(self) -> None:
-        self.adapter = DefaultGroupAdapter()
+        self.adapter = DefaultGroupAdapter(make_context())
         self.factory = RequestFactory()
 
     def _make_request(self) -> object:
@@ -118,7 +123,9 @@ class DefaultGroupAdapterTest(TestCase):
 
     def test_from_scim_update(self) -> None:
         group = Group.objects.create(name="Old")
-        scim_group = SCIMGroup.objects.create(group=group, display_name="Old")
+        scim_group = SCIMGroup.objects.create(
+            config="default", group=group, display_name="Old"
+        )
         data = {"displayName": "New"}
         result = self.adapter.from_scim(data, scim_group)
         assert result.display_name == "New"
@@ -136,9 +143,13 @@ class DefaultGroupAdapterTest(TestCase):
 
     def test_to_scim_with_members(self) -> None:
         group = Group.objects.create(name="Team")
-        scim_group = SCIMGroup.objects.create(group=group, display_name="Team")
+        scim_group = SCIMGroup.objects.create(
+            config="default", group=group, display_name="Team"
+        )
         user = User.objects.create_user(username="member")
-        scim_user = SCIMUser.objects.create(user=user, scim_username="member")
+        scim_user = SCIMUser.objects.create(
+            config="default", user=user, scim_username="member"
+        )
         group.user_set.add(user)
 
         request = self._make_request()
@@ -150,7 +161,9 @@ class DefaultGroupAdapterTest(TestCase):
 
     def test_delete_removes_group(self) -> None:
         group = Group.objects.create(name="Del")
-        scim_group = SCIMGroup.objects.create(group=group, display_name="Del")
+        scim_group = SCIMGroup.objects.create(
+            config="default", group=group, display_name="Del"
+        )
         group_id = group.id
         self.adapter.delete(scim_group)
         assert not Group.objects.filter(id=group_id).exists()
@@ -158,9 +171,13 @@ class DefaultGroupAdapterTest(TestCase):
 
     def test_sync_members(self) -> None:
         group = Group.objects.create(name="Sync")
-        scim_group = SCIMGroup.objects.create(group=group, display_name="Sync")
+        scim_group = SCIMGroup.objects.create(
+            config="default", group=group, display_name="Sync"
+        )
         user = User.objects.create_user(username="syncuser")
-        scim_user = SCIMUser.objects.create(user=user, scim_username="syncuser")
+        scim_user = SCIMUser.objects.create(
+            config="default", user=user, scim_username="syncuser"
+        )
 
         data = {
             "displayName": "Sync",

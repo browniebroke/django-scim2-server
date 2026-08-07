@@ -73,7 +73,11 @@ class ServiceProviderConfigViewTest(AuthenticatedTestCase):
         )
         self.client.force_login(regular)
         with self.settings(
-            SCIM2_SERVER_AUTH_CHECK="django_scim2_server.auth.is_authenticated",
+            SCIM2_SERVER_CONFIGS={
+                "default": {
+                    "AUTH_CHECK": "django_scim2_server.auth.is_authenticated",
+                },
+            },
         ):
             resp = self.client.get("/scim/v2/ServiceProviderConfig")
         assert resp.status_code == 200
@@ -139,7 +143,7 @@ class UserListViewTest(AuthenticatedTestCase):
 
     def test_create_duplicate_user(self) -> None:
         user = User.objects.create_user(username="dup")
-        SCIMUser.objects.create(user=user, scim_username="dup")
+        SCIMUser.objects.create(config="default", user=user, scim_username="dup")
         payload = {"schemas": [URN_USER], "userName": "dup"}
         resp = self.client.post(
             "/scim/v2/Users",
@@ -150,7 +154,7 @@ class UserListViewTest(AuthenticatedTestCase):
 
     def test_list_with_filter(self) -> None:
         user = User.objects.create_user(username="filtered")
-        SCIMUser.objects.create(user=user, scim_username="filtered")
+        SCIMUser.objects.create(config="default", user=user, scim_username="filtered")
         resp = self.client.get('/scim/v2/Users?filter=userName eq "filtered"')
         data = resp.json()
         assert data["totalResults"] == 1
@@ -159,7 +163,7 @@ class UserListViewTest(AuthenticatedTestCase):
     def test_list_pagination(self) -> None:
         for i in range(5):
             u = User.objects.create_user(username=f"page{i}")
-            SCIMUser.objects.create(user=u, scim_username=f"page{i}")
+            SCIMUser.objects.create(config="default", user=u, scim_username=f"page{i}")
         resp = self.client.get("/scim/v2/Users?startIndex=2&count=2")
         data = resp.json()
         assert data["totalResults"] == 5
@@ -192,7 +196,9 @@ class UserDetailViewTest(AuthenticatedTestCase):
 
     def _create_scim_user(self, username: str = "detail") -> SCIMUser:
         user = User.objects.create_user(username=username, email="d@ex.com")
-        return SCIMUser.objects.create(user=user, scim_username=username)
+        return SCIMUser.objects.create(
+            config="default", user=user, scim_username=username
+        )
 
     def test_get_user(self) -> None:
         scim_user = self._create_scim_user()
@@ -374,7 +380,9 @@ class UserDetailViewTest(AuthenticatedTestCase):
         user = User.objects.create_user(
             username="rm", first_name="First", last_name="Last"
         )
-        scim_user = SCIMUser.objects.create(user=user, scim_username="rm")
+        scim_user = SCIMUser.objects.create(
+            config="default", user=user, scim_username="rm"
+        )
         payload = {
             "schemas": [URN_PATCH_OP],
             "Operations": [
@@ -391,7 +399,9 @@ class UserDetailViewTest(AuthenticatedTestCase):
 
     def test_patch_user_remove_family_name(self) -> None:
         user = User.objects.create_user(username="rm2", first_name="F", last_name="L")
-        scim_user = SCIMUser.objects.create(user=user, scim_username="rm2")
+        scim_user = SCIMUser.objects.create(
+            config="default", user=user, scim_username="rm2"
+        )
         payload = {
             "schemas": [URN_PATCH_OP],
             "Operations": [
@@ -408,7 +418,9 @@ class UserDetailViewTest(AuthenticatedTestCase):
 
     def test_patch_user_remove_emails(self) -> None:
         user = User.objects.create_user(username="rm3", email="old@ex.com")
-        scim_user = SCIMUser.objects.create(user=user, scim_username="rm3")
+        scim_user = SCIMUser.objects.create(
+            config="default", user=user, scim_username="rm3"
+        )
         payload = {
             "schemas": [URN_PATCH_OP],
             "Operations": [
@@ -426,7 +438,7 @@ class UserDetailViewTest(AuthenticatedTestCase):
     def test_patch_user_remove_external_id(self) -> None:
         user = User.objects.create_user(username="rm4")
         scim_user = SCIMUser.objects.create(
-            user=user, scim_username="rm4", external_id="ext-old"
+            config="default", user=user, scim_username="rm4", external_id="ext-old"
         )
         payload = {
             "schemas": [URN_PATCH_OP],
@@ -446,7 +458,9 @@ class UserDetailViewTest(AuthenticatedTestCase):
         user = User.objects.create_user(
             username="partial", first_name="Old", last_name="Name"
         )
-        scim_user = SCIMUser.objects.create(user=user, scim_username="partial")
+        scim_user = SCIMUser.objects.create(
+            config="default", user=user, scim_username="partial"
+        )
         payload = {
             "schemas": [URN_PATCH_OP],
             "Operations": [
@@ -558,7 +572,7 @@ class GroupListViewTest(AuthenticatedTestCase):
 
     def test_list_with_filter(self) -> None:
         group = Group.objects.create(name="Filtered")
-        SCIMGroup.objects.create(group=group, display_name="Filtered")
+        SCIMGroup.objects.create(config="default", group=group, display_name="Filtered")
         resp = self.client.get('/scim/v2/Groups?filter=displayName eq "Filtered"')
         data = resp.json()
         assert data["totalResults"] == 1
@@ -579,7 +593,9 @@ class GroupDetailViewTest(AuthenticatedTestCase):
 
     def _create_scim_group(self, name: str = "testgrp") -> SCIMGroup:
         group = Group.objects.create(name=name)
-        return SCIMGroup.objects.create(group=group, display_name=name)
+        return SCIMGroup.objects.create(
+            config="default", group=group, display_name=name
+        )
 
     def test_get_group(self) -> None:
         scim_group = self._create_scim_group()
@@ -601,7 +617,9 @@ class GroupDetailViewTest(AuthenticatedTestCase):
     def test_patch_group_add_members(self) -> None:
         scim_group = self._create_scim_group()
         user = User.objects.create_user(username="member1")
-        scim_user = SCIMUser.objects.create(user=user, scim_username="member1")
+        scim_user = SCIMUser.objects.create(
+            config="default", user=user, scim_username="member1"
+        )
         payload = {
             "schemas": [URN_PATCH_OP],
             "Operations": [
@@ -656,9 +674,11 @@ class GroupDetailViewTest(AuthenticatedTestCase):
     def test_patch_group_replace_members(self) -> None:
         scim_group = self._create_scim_group()
         user1 = User.objects.create_user(username="rep1")
-        SCIMUser.objects.create(user=user1, scim_username="rep1")
+        SCIMUser.objects.create(config="default", user=user1, scim_username="rep1")
         user2 = User.objects.create_user(username="rep2")
-        su2 = SCIMUser.objects.create(user=user2, scim_username="rep2")
+        su2 = SCIMUser.objects.create(
+            config="default", user=user2, scim_username="rep2"
+        )
         # Add user1 first
         scim_group.group.user_set.add(user1)
         # Replace with user2 only
@@ -685,7 +705,7 @@ class GroupDetailViewTest(AuthenticatedTestCase):
     def test_patch_group_remove_members(self) -> None:
         scim_group = self._create_scim_group()
         user = User.objects.create_user(username="rem1")
-        su = SCIMUser.objects.create(user=user, scim_username="rem1")
+        su = SCIMUser.objects.create(config="default", user=user, scim_username="rem1")
         scim_group.group.user_set.add(user)
         payload = {
             "schemas": [URN_PATCH_OP],
@@ -708,7 +728,7 @@ class GroupDetailViewTest(AuthenticatedTestCase):
     def test_patch_group_remove_member_by_filter(self) -> None:
         scim_group = self._create_scim_group()
         user = User.objects.create_user(username="filt1")
-        su = SCIMUser.objects.create(user=user, scim_username="filt1")
+        su = SCIMUser.objects.create(config="default", user=user, scim_username="filt1")
         scim_group.group.user_set.add(user)
         payload = {
             "schemas": [URN_PATCH_OP],
@@ -849,7 +869,7 @@ class GroupDetailViewTest(AuthenticatedTestCase):
     def test_patch_group_remove_external_id(self) -> None:
         group = Group.objects.create(name="extgrp")
         scim_group = SCIMGroup.objects.create(
-            group=group, display_name="extgrp", external_id="ext-old"
+            config="default", group=group, display_name="extgrp", external_id="ext-old"
         )
         payload = {
             "schemas": [URN_PATCH_OP],
@@ -935,3 +955,71 @@ class GroupDetailViewTest(AuthenticatedTestCase):
         assert resp.status_code == 204
         assert not Group.objects.filter(id=group_id).exists()
         assert not SCIMGroup.objects.filter(id=scim_group.id).exists()
+
+
+class DjangoUniquenessConflictTest(AuthenticatedTestCase):
+    """Collisions on Django's own unique columns are reported as SCIM conflicts."""
+
+    def test_create_user_colliding_with_a_non_scim_django_user(self) -> None:
+        # A Django user that was not provisioned through SCIM, so the userName
+        # uniqueness probe cannot see it.
+        User.objects.create_user(username="preexisting")
+        resp = self.client.post(
+            "/scim/v2/Users",
+            data=json.dumps({"schemas": [URN_USER], "userName": "preexisting"}),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 409
+        assert resp.json()["scimType"] == "uniqueness"
+
+    def test_create_group_colliding_with_a_non_scim_django_group(self) -> None:
+        Group.objects.create(name="Preexisting")
+        resp = self.client.post(
+            "/scim/v2/Groups",
+            data=json.dumps({"displayName": "Preexisting"}),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 409
+        assert resp.json()["scimType"] == "uniqueness"
+
+
+class MalformedMemberReferenceTest(AuthenticatedTestCase):
+    """Member references that are not UUIDs are ignored rather than crashing."""
+
+    def test_create_group_with_a_malformed_member(self) -> None:
+        resp = self.client.post(
+            "/scim/v2/Groups",
+            data=json.dumps(
+                {
+                    "displayName": "Team",
+                    "members": [{"value": "not-a-uuid"}],
+                }
+            ),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 201
+        assert resp.json()["members"] == []
+
+    def test_patch_group_with_a_malformed_member(self) -> None:
+        group = Group.objects.create(name="Team2")
+        scim_group = SCIMGroup.objects.create(
+            config="default", group=group, display_name="Team2"
+        )
+        resp = self.client.patch(
+            f"/scim/v2/Groups/{scim_group.id}",
+            data=json.dumps(
+                {
+                    "schemas": [URN_PATCH_OP],
+                    "Operations": [
+                        {
+                            "op": "add",
+                            "path": "members",
+                            "value": [{"value": "not-a-uuid"}, {"nope": 1}],
+                        }
+                    ],
+                }
+            ),
+            content_type=SCIM_CONTENT_TYPE,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["members"] == []

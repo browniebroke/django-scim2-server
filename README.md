@@ -58,14 +58,25 @@ INSTALLED_APPS = [
 ]
 ```
 
-Include the SCIM URL routes in your root URL configuration:
+Declare at least one SCIM configuration:
+
+```python
+SCIM2_SERVER_CONFIGS = {
+    "default": {},
+}
+```
+
+Include the SCIM URL routes in your root URL configuration, one mount per
+configuration:
 
 ```python
 from django.urls import include, path
 
+from django_scim2_server.urls import scim2_urls
+
 urlpatterns = [
     # ...
-    path("scim/v2/", include("django_scim2_server.urls")),
+    path("scim/v2/", include(scim2_urls("default"))),
 ]
 ```
 
@@ -74,6 +85,32 @@ Run migrations to create the SCIM database tables:
 ```bash
 python manage.py migrate
 ```
+
+## Multiple configurations
+
+Several SCIM surfaces can run side by side — for instance one for your own staff, and
+one per customer tenant:
+
+```python
+SCIM2_SERVER_CONFIGS = {
+    "staff": {},
+    "tenants": {
+        "AUTH_CHECK": "myproject.scim.tenant_token_check",
+        "SCOPE_URL_KWARG": "tenant",
+    },
+}
+```
+
+```python
+urlpatterns = [
+    path("scim/v2/", include(scim2_urls("staff"))),
+    path("t/<slug:tenant>/scim/v2/", include(scim2_urls("tenants"))),
+]
+```
+
+Each tenant gets its own base URL to hand to its identity provider, and the users and
+groups it provisions are invisible to the other tenants. See the
+[documentation](https://django-scim2-server.readthedocs.io) for details.
 
 ## Contributors ✨
 

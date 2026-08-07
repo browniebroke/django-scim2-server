@@ -55,6 +55,7 @@ RESOURCE_TYPE_USER = ResourceType(
     endpoint="/Users",
     description="User Account",
     schema_=URN_USER,
+    meta=Meta(resource_type="ResourceType"),
 )
 
 RESOURCE_TYPE_GROUP = ResourceType(
@@ -63,6 +64,7 @@ RESOURCE_TYPE_GROUP = ResourceType(
     endpoint="/Groups",
     description="Group",
     schema_=URN_GROUP,
+    meta=Meta(resource_type="ResourceType"),
 )
 
 SCHEMA_USER = Schema(

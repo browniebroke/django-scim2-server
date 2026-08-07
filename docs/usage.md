@@ -20,19 +20,68 @@ The following endpoints are available under the URL prefix you chose (e.g. `/sci
 
 ## How it works
 
-The app creates two models, `SCIMUser` and `SCIMGroup`, each linked via a `OneToOneField` to Django's built-in `auth.User` and `auth.Group` models respectively. These hold SCIM-specific metadata (UUID, `externalId`, timestamps) while leaving your existing user and group data untouched.
+The app creates two models, `SCIMUser` and `SCIMGroup`, each linked via a `ForeignKey` to Django's built-in `auth.User` and `auth.Group` models respectively. These hold SCIM-specific metadata (UUID, `externalId`, timestamps) while leaving your existing user and group data untouched.
 
 When a SCIM client sends a `POST /Users` request, the app creates both a Django user **and** a `SCIMUser` record. On `DELETE /Users/<id>`, the user is **deactivated** (not deleted) by setting `is_active=False`, which is the behavior most identity providers expect.
 
-## Access control
+## Configurations
 
-By default, only **superusers** can access the SCIM endpoints. You can change this by pointing `SCIM2_SERVER_AUTH_CHECK` to a different callable:
+Everything is configured per **configuration**: a named profile declared in
+`SCIM2_SERVER_CONFIGS` and mounted at its own URL prefix. A project needs at least one:
 
 ```python
 # settings.py
+SCIM2_SERVER_CONFIGS = {
+    "default": {},
+}
+```
 
-# Allow any authenticated user (less restrictive):
-SCIM2_SERVER_AUTH_CHECK = "django_scim2_server.auth.is_authenticated"
+```python
+# urls.py
+from django.urls import include, path
+
+from django_scim2_server.urls import scim2_urls
+
+urlpatterns = [
+    path("scim/v2/", include(scim2_urls("default"))),
+]
+```
+
+The configuration name is the URL namespace, so resources are reversed as
+`default:users-list`, `default:users-detail`, and so on.
+
+Several configurations can be declared and mounted alongside each other — see
+{doc}`multi-config`.
+
+(configuration-keys)=
+
+### Configuration keys
+
+| Key                       | Default                                            | Description                                       |
+| ------------------------- | -------------------------------------------------- | ------------------------------------------------- |
+| `USER_ADAPTER`            | `django_scim2_server.adapters.DefaultUserAdapter`  | Dotted path to the user adapter class             |
+| `GROUP_ADAPTER`           | `django_scim2_server.adapters.DefaultGroupAdapter` | Dotted path to the group adapter class            |
+| `AUTH_CHECK`              | `django_scim2_server.auth.is_superuser`            | Dotted path to the access-control callable         |
+| `SCOPE_URL_KWARG`         | `None`                                             | URL keyword argument carrying the tenant key      |
+| `SERVICE_PROVIDER_CONFIG` | the built-in document                              | Dotted path to a `ServiceProviderConfig` instance |
+
+Unknown keys, dotted paths that cannot be imported, and adapters that do not derive from
+the base classes all raise `ImproperlyConfigured`. The app registers system checks for
+this, so `manage.py check` reports the problem before any request is served.
+
+## Access control
+
+By default, only **superusers** can access the SCIM endpoints. Point `AUTH_CHECK` at a
+different callable to change that:
+
+```python
+# settings.py
+SCIM2_SERVER_CONFIGS = {
+    "default": {
+        # Allow any authenticated user (less restrictive):
+        "AUTH_CHECK": "django_scim2_server.auth.is_authenticated",
+    },
+}
 ```
 
 You can also write your own check. It must be a callable that takes an `HttpRequest` and returns a `bool`:
@@ -48,8 +97,13 @@ def check_scim_token(request):
 
 ```python
 # settings.py
-SCIM2_SERVER_AUTH_CHECK = "myapp.scim_auth.check_scim_token"
+SCIM2_SERVER_CONFIGS = {
+    "default": {"AUTH_CHECK": "myapp.scim_auth.check_scim_token"},
+}
 ```
+
+The check runs after the configuration has been resolved, so it can read which
+configuration and tenant the request is addressed to — see {doc}`multi-config`.
 
 ## Filtering and pagination
 
@@ -64,6 +118,10 @@ Supported filter operators: `eq`, `ne`, `co`, `sw`, `ew`, `gt`, `ge`, `lt`, `le`
 ## Custom adapters
 
 Adapters control how SCIM JSON maps to and from your Django models. The defaults work with `django.contrib.auth.User` and `Group`, but you can subclass them to support custom user models or additional attributes.
+
+An adapter is instantiated per request with a `SCIMContext`, available as `self.context`.
+It tells the adapter which configuration is serving the request (`self.config_name`) and
+which tenant (`self.scope`).
 
 ### Example: mapping a custom user model
 
@@ -91,23 +149,37 @@ class MyUserAdapter(DefaultUserAdapter):
         return scim_obj
 ```
 
-Then point the setting to your adapter:
+Then point the configuration at your adapter:
 
 ```python
 # settings.py
-SCIM2_SERVER_USER_ADAPTER = "myapp.adapters.MyUserAdapter"
+SCIM2_SERVER_CONFIGS = {
+    "default": {"USER_ADAPTER": "myapp.adapters.MyUserAdapter"},
+}
 ```
+
+### Extending PATCH support
+
+`PATCH` operations are dispatched to the adapter one at a time, so an adapter can
+support extra SCIM paths by overriding `apply_patch_operation`:
+
+```python
+# myapp/patch_adapters.py
+from django_scim2_server.adapters import DefaultUserAdapter
+
+
+class TitleAwareUserAdapter(DefaultUserAdapter):
+    def apply_patch_operation(self, scim_obj, op, path, value):
+        if path == "title" and op in ("add", "replace"):
+            scim_obj.user.title = value
+            return
+        super().apply_patch_operation(scim_obj, op, path, value)
+```
+
+Changes are persisted once at the end of the operation run, by `save_patched`.
 
 ## Settings reference
 
-All settings are prefixed with `SCIM2_SERVER_` and can be set in your Django settings module:
-
-| Setting                      | Default                                            | Description                                |
-| ---------------------------- | -------------------------------------------------- | ------------------------------------------ |
-| `SCIM2_SERVER_USER_ADAPTER`  | `django_scim2_server.adapters.DefaultUserAdapter`  | Dotted path to the user adapter class      |
-| `SCIM2_SERVER_GROUP_ADAPTER` | `django_scim2_server.adapters.DefaultGroupAdapter` | Dotted path to the group adapter class     |
-| `SCIM2_SERVER_AUTH_CHECK`    | `django_scim2_server.auth.is_superuser`            | Dotted path to auth check callable         |
-| `SCIM2_SERVER_USER_MODEL`    | `auth.User`                                        | Target user model (`app_label.ModelName`)  |
-| `SCIM2_SERVER_GROUP_MODEL`   | `auth.Group`                                       | Target group model (`app_label.ModelName`) |
-
-See {doc}`configuration` for details on how settings overrides work.
+There is a single setting, `SCIM2_SERVER_CONFIGS`, described by the
+{ref}`configuration keys <configuration-keys>` table above. See {doc}`configuration` for
+the resolved configuration object.
