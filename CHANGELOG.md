@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.0 (2026-08-07)
+
+### Features
+
+- Add support for python 3.15 ([`d661340`](https://github.com/browniebroke/django-scim2-server/commit/d661340d303cb732c565c337d210d73db642ccfa))
+
 ## v1.0.0 (2026-07-26)
 
 ### Features
