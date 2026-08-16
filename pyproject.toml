@@ -41,6 +41,8 @@ urls.repository = "https://github.com/browniebroke/django-scim2-server"
 
 [dependency-groups]
 dev = [
+  "django-stubs>=6.0.9",
+  "mypy>=2.3",
   "coverage",
   "pytest==9.*",
   "pytest-django==4.*",
@@ -105,6 +107,7 @@ lint.isort.known-first-party = [ "django_scim2_server", "tests" ]
 max_supported_python = "3.15"
 
 [tool.mypy]
+plugins = [ "mypy_django_plugin.main" ]
 mypy_path = "src/"
 exclude = [
   "docs/.*",
@@ -122,6 +125,9 @@ overrides = [
 ]
 no_implicit_optional = true
 show_error_codes = true
+
+[tool.django-stubs]
+django_settings_module = "tests.settings"
 
 [tool.pytest]
 addopts = [
