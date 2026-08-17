@@ -118,7 +118,7 @@ disallow_incomplete_defs = true
 check_untyped_defs = true
 warn_unused_ignores = true
 warn_unreachable = true
-plugins = [ "mypy_django_plugin.main" ]
+plugins = [ "mypy_django_plugin.main", "pydantic.mypy" ]
 overrides = [
   { module = "tests.*", allow_untyped_defs = true },
   { module = "docs.*", ignore_errors = true },
