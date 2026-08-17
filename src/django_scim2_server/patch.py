@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 from uuid import UUID
 
 from django.db import transaction
@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     )
 
 MEMBER_FILTER_VALUE_EQ_RE = re.compile(r'value\s+eq\s+"([^"]+)"')
+
+_ScimObjT = TypeVar("_ScimObjT", SCIMUser, SCIMGroup)
 
 
 def _apply_user_op(
@@ -173,10 +175,10 @@ def _remove_group_member_by_filter(scim_obj: SCIMGroup, path: str) -> None:
 
 @transaction.atomic
 def apply_patch_operations(
-    scim_obj: SCIMUser | SCIMGroup,
+    scim_obj: _ScimObjT,
     operations: list[dict[str, Any]],
     adapter: BaseUserAdapter | BaseGroupAdapter,
-) -> SCIMUser | SCIMGroup:
+) -> _ScimObjT:
     """Apply a list of SCIM PATCH operations to a resource."""
     for operation in operations:
         op = operation.get("op", "").lower()
