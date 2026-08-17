@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
@@ -84,7 +84,7 @@ class SCIMView(View):
             return scim_error_response(exc)
         except json.JSONDecodeError:
             return scim_error_response(BadRequestError("Invalid JSON in request body"))
-        return response
+        return cast(HttpResponse, response)
 
     def scim_response(
         self,
@@ -162,7 +162,7 @@ class UserListView(SCIMView):
         page = qs[offset : offset + count]
 
         resources = [adapter.to_scim(obj, request) for obj in page]
-        response = ListResponse[SCIMUserModel](
+        response = ListResponse[SCIMUserModel[Any]](
             total_results=total,
             start_index=start_index,
             items_per_page=len(resources),

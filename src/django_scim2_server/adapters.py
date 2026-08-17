@@ -29,7 +29,7 @@ class BaseUserAdapter:
         """Return the base queryset for SCIM users."""
         return SCIMUser.objects.select_related("user")
 
-    def to_scim(self, scim_obj: SCIMUser, request: HttpRequest) -> SCIMUserModel:
+    def to_scim(self, scim_obj: SCIMUser, request: HttpRequest) -> SCIMUserModel[Any]:
         """Convert a SCIMUser instance to a SCIM User model."""
         raise NotImplementedError
 
@@ -106,7 +106,7 @@ class DefaultUserAdapter(BaseUserAdapter):
         "externalId": "external_id",
     }
 
-    def to_scim(self, scim_obj: SCIMUser, request: HttpRequest) -> SCIMUserModel:
+    def to_scim(self, scim_obj: SCIMUser, request: HttpRequest) -> SCIMUserModel[Any]:
         """Convert a SCIMUser to a SCIM User pydantic model."""
         user = scim_obj.user
         location = _build_location(request, "Users", str(scim_obj.id))
@@ -136,7 +136,7 @@ class DefaultUserAdapter(BaseUserAdapter):
     ) -> SCIMUser:
         """Create or update a SCIMUser from SCIM JSON data."""
         try:
-            scim_user = SCIMUserModel.model_validate(data)
+            scim_user = SCIMUserModel[Any].model_validate(data)
         except ValidationError as exc:
             raise BadRequestError(str(exc)) from exc
 
