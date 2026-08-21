@@ -140,9 +140,9 @@ minversion = "9.0"
 pythonpath = [ "src" ]
 
 [tool.coverage]
+run.source = [ "django_scim2_server" ]
 run.branch = true
 run.parallel = true
-run.source = [ "django_scim2_server" ]
 paths.source = [
   "src",
   ".tox/**/site-packages",
