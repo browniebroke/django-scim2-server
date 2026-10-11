@@ -7,12 +7,14 @@ from scim2_models import (
     AuthenticationScheme,
     Bulk,
     ChangePassword,
+    EnterpriseUser,
     ETag,
     Filter,
     Meta,
     Patch,
     ResourceType,
     Schema,
+    SchemaExtension,
     ServiceProviderConfig,
     Sort,
 )
@@ -22,6 +24,7 @@ SCIM_CONTENT_TYPE = "application/scim+json"
 # Schema URNs
 URN_USER = "urn:ietf:params:scim:schemas:core:2.0:User"
 URN_GROUP = "urn:ietf:params:scim:schemas:core:2.0:Group"
+URN_ENTERPRISE_USER = "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"
 URN_LIST_RESPONSE = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
 URN_PATCH_OP = "urn:ietf:params:scim:api:messages:2.0:PatchOp"
 URN_ERROR = "urn:ietf:params:scim:api:messages:2.0:Error"
@@ -56,6 +59,16 @@ RESOURCE_TYPE_USER = ResourceType(
     description="User Account",
     schema_=URN_USER,
 )
+
+RESOURCE_TYPE_USER_WITH_ENTERPRISE = ResourceType(
+    id="User",
+    name="User",
+    endpoint="/Users",
+    description="User Account",
+    schema_=URN_USER,
+    schema_extensions=[SchemaExtension(schema_=URN_ENTERPRISE_USER, required=False)],
+)
+"""User resource type for adapters that map the Enterprise User extension."""
 
 RESOURCE_TYPE_GROUP = ResourceType(
     id="Group",
@@ -209,4 +222,10 @@ SCHEMA_GROUP = Schema(
         resource_type="Schema",
         location="/Schemas/" + URN_GROUP,
     ),
+)
+
+SCHEMA_ENTERPRISE_USER = EnterpriseUser.to_schema()
+SCHEMA_ENTERPRISE_USER.meta = Meta(
+    resource_type="Schema",
+    location="/Schemas/" + URN_ENTERPRISE_USER,
 )
