@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import json
 import logging
 from typing import Any, ClassVar, cast
@@ -85,11 +84,7 @@ class SCIMView(View):
 
     def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         """Dispatch with SCIM error handling and content type."""
-        auth_check = self.auth_check
-        if inspect.ismethod(auth_check) and auth_check.__self__ is self:
-            # A plain function set on a subclass body is bound like a method.
-            auth_check = auth_check.__func__
-        auth_check = _resolve(auth_check, app_settings.SCIM2_SERVER_AUTH_CHECK)
+        auth_check = _resolve(self.auth_check, app_settings.SCIM2_SERVER_AUTH_CHECK)
         if not auth_check(request):
             error = SCIMError(detail="Authentication required", status=401)
             return scim_error_response(error)

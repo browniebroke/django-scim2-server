@@ -181,3 +181,9 @@ def test_default_mount_accepts_entra_payload_with_enterprise_extension() -> None
     response = _send(client, "post", "/scim/v2/Users", _entra_create_payload("j@x.io"))
 
     assert response.status_code == 201
+
+
+def test_rejects_a_body_that_is_not_an_object(acme: Organisation) -> None:
+    response = _send(_client(acme), "post", f"{BASE}/Users", [])  # type: ignore[arg-type]
+
+    assert response.status_code == 400

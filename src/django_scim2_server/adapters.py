@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.urls import NoReverseMatch, reverse
@@ -89,9 +89,8 @@ class BaseAdapter:
         written back through ``from_scim``, so an adapter only has to
         implement the mapping once.
         """
-        if self.request is None:
-            raise ImproperlyConfigured("Adapter.patch requires the adapter request")
-        current = self.to_scim(scim_obj, self.request).model_dump(
+        request = cast("HttpRequest", self.request)
+        current = self.to_scim(scim_obj, request).model_dump(
             mode="json", by_alias=True, exclude_none=True
         )
         patched = apply_patch_to_resource(current, operations)

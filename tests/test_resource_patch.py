@@ -222,3 +222,144 @@ def test_rejects_invalid_operations(operations: Any, scim_type: str) -> None:
 def test_bad_request_error_is_raised_for_unknown_op() -> None:
     with pytest.raises(BadRequestError):
         apply_patch_to_resource(_user(), [{"op": "copy", "path": "active"}])
+
+
+@pytest.mark.parametrize(
+    ("resource", "operations", "expected"),
+    [
+        pytest.param(
+            _user(emails=[{"value": "a@x.io"}, {"value": "b@x.io", "primary": True}]),
+            [{"op": "replace", "path": "emails.value", "value": "c@x.io"}],
+            {
+                **_user(),
+                "emails": [{"value": "a@x.io"}, {"value": "c@x.io", "primary": True}],
+            },
+            id="unfiltered-sub-attribute-targets-the-primary-value",
+        ),
+        pytest.param(
+            _user(emails=[]),
+            [{"op": "add", "path": "emails.value", "value": "c@x.io"}],
+            {**_user(), "emails": [{"value": "c@x.io"}]},
+            id="sub-attribute-on-empty-list-creates-a-value",
+        ),
+        pytest.param(
+            {"schemas": [URN_CORE], "userName": "u"},
+            [{"op": "add", "path": "name.givenName", "value": "Jane"}],
+            {"schemas": [URN_CORE], "userName": "u", "name": {"givenName": "Jane"}},
+            id="sub-attribute-creates-missing-complex-attribute",
+        ),
+        pytest.param(
+            {"schemas": [URN_CORE], "userName": "u"},
+            [
+                {"op": "remove", "path": "name.givenName"},
+                {"op": "remove", "path": f"{URN_ENTERPRISE}:department"},
+                {"op": "remove", "path": "emails.value"},
+            ],
+            {"schemas": [URN_CORE], "userName": "u"},
+            id="removing-missing-attributes-is-a-no-op",
+        ),
+        pytest.param(
+            _user(),
+            [{"op": "remove", "path": "name"}],
+            {k: v for k, v in _user().items() if k != "name"},
+            id="remove-whole-attribute",
+        ),
+        pytest.param(
+            _user(),
+            [{"op": "remove", "path": 'emails[type eq "WORK"].primary'}],
+            {**_user(), "emails": [{"value": "jane@firm.example", "type": "work"}]},
+            id="filtered-remove-of-sub-attribute",
+        ),
+        pytest.param(
+            _user(),
+            [
+                {
+                    "op": "replace",
+                    "path": 'emails[type eq "work"]',
+                    "value": {"value": "j@x.io", "Primary": "false"},
+                }
+            ],
+            {
+                **_user(),
+                "emails": [{"value": "j@x.io", "type": "work", "primary": False}],
+            },
+            id="filtered-replace-with-object-merges-into-match",
+        ),
+        pytest.param(
+            _user(emails=None),
+            [
+                {
+                    "op": "add",
+                    "path": 'emails[type eq "work"]',
+                    "value": {"value": "j@x.io"},
+                }
+            ],
+            {**_user(), "emails": [{"type": "work", "value": "j@x.io"}]},
+            id="filtered-add-with-object-creates-value",
+        ),
+        pytest.param(
+            _user(),
+            [
+                {
+                    "op": "add",
+                    "schemas": [URN_CORE],
+                    "value": {"schemas": ["x"], "active": False},
+                }
+            ],
+            {**_user(), "active": False},
+            id="pathless-value-ignores-schemas-key",
+        ),
+    ],
+)
+def test_applies_edge_case_operations(
+    resource: dict[str, Any],
+    operations: list[dict[str, Any]],
+    expected: dict[str, Any],
+) -> None:
+    assert apply_patch_to_resource(resource, operations) == expected
+
+
+@pytest.mark.parametrize(
+    ("operation", "scim_type"),
+    [
+        pytest.param("not-an-object", "", id="operation-not-an-object"),
+        pytest.param(
+            {"op": "add", "path": "urn:x:", "value": 1},
+            "invalidPath",
+            id="urn-without-attribute",
+        ),
+        pytest.param(
+            {"op": "add", "path": "userName.x", "value": 1},
+            "invalidPath",
+            id="sub-attribute-of-a-string",
+        ),
+        pytest.param(
+            {"op": "add", "path": 'userName[value eq "x"]', "value": 1},
+            "invalidPath",
+            id="filter-on-single-valued",
+        ),
+        pytest.param(
+            {"op": "add", "path": 'emails[type eq "work"]', "value": "x"},
+            "invalidPath",
+            id="filtered-match-needs-object",
+        ),
+        pytest.param(
+            {"op": "add", "path": 'emails[type eq "home"]', "value": "x"},
+            "invalidPath",
+            id="filtered-append-needs-object",
+        ),
+    ],
+)
+def test_rejects_invalid_targets(operation: Any, scim_type: str) -> None:
+    with pytest.raises(SCIMError) as exc_info:
+        apply_patch_to_resource(_user(), [operation])
+
+    assert exc_info.value.scim_type == scim_type
+
+
+def test_adding_a_plain_value_to_a_list_replaces_it() -> None:
+    result = apply_patch_to_resource(
+        {"roles": ["a"]}, [{"op": "add", "path": "roles", "value": ["a", "b"]}]
+    )
+
+    assert result["roles"] == ["a", "b"]

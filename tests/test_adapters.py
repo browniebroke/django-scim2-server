@@ -168,3 +168,14 @@ class DefaultGroupAdapterTest(TestCase):
         }
         self.adapter.from_scim(data, scim_group)
         assert user in scim_group.group.user_set.all()
+
+
+def test_location_falls_back_when_namespace_has_no_scim_routes() -> None:
+    from django.urls import resolve
+
+    from django_scim2_server.adapters import build_location
+
+    request = RequestFactory().get("/admin/")
+    request.resolver_match = resolve("/admin/")
+
+    assert build_location(request, "Users", "1") == "http://testserver/scim/v2/Users/1"

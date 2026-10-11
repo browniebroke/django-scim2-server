@@ -38,7 +38,7 @@ _PATH_RE = re.compile(
     re.VERBOSE,
 )
 _VALUE_FILTER_RE = re.compile(
-    r'^\s*(?P<attr>[A-Za-z][\w$-]*)\s+eq\s+(?:"(?P<str>(?:[^"\\]|\\.)*)"|(?P<lit>\S+))\s*$',
+    r'^\s*(?P<attr>[A-Za-z][\w$-]*)\s+eq\s+"(?P<value>(?:[^"\\]|\\.)*)"\s*$',
     re.IGNORECASE,
 )
 
@@ -60,15 +60,13 @@ class InvalidPathError(SCIMError):
 @dataclass(frozen=True)
 class _ValueFilter:
     attr: str
-    value: Any
+    value: str
 
     def matches(self, item: Any) -> bool:
         if not isinstance(item, dict):
             return False
         current = _get_ci(item, self.attr)
-        if isinstance(current, str) and isinstance(self.value, str):
-            return current.lower() == self.value.lower()
-        return bool(current == self.value)
+        return isinstance(current, str) and current.lower() == self.value.lower()
 
 
 @dataclass(frozen=True)
@@ -151,25 +149,11 @@ def _extension_keys(document: dict[str, Any]) -> set[str]:
 
 
 def _parse_value_filter(raw_filter: str) -> _ValueFilter:
+    """Parse ``attr eq "value"``, the only filter form Entra ID and Okta send."""
     match = _VALUE_FILTER_RE.match(raw_filter)
     if not match:
         raise InvalidPathError(f"Unsupported value filter: [{raw_filter}]")
-    if match.group("str") is not None:
-        value: Any = match.group("str").replace('\\"', '"').replace("\\\\", "\\")
-    else:
-        literal = match.group("lit")
-        lowered = literal.lower()
-        if lowered in _STRING_BOOLEANS:
-            value = _STRING_BOOLEANS[lowered]
-        elif lowered == "null":
-            value = None
-        else:
-            try:
-                value = float(literal) if "." in literal else int(literal)
-            except ValueError as exc:
-                raise InvalidPathError(
-                    f"Unsupported value filter: [{raw_filter}]"
-                ) from exc
+    value = match.group("value").replace('\\"', '"').replace("\\\\", "\\")
     return _ValueFilter(match.group("attr"), value)
 
 

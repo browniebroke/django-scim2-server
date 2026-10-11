@@ -60,6 +60,7 @@ RESOURCE_TYPE_USER = ResourceType(
     schema_=URN_USER,
 )
 
+# User resource type for adapters that map the Enterprise User extension.
 RESOURCE_TYPE_USER_WITH_ENTERPRISE = ResourceType(
     id="User",
     name="User",
@@ -68,7 +69,6 @@ RESOURCE_TYPE_USER_WITH_ENTERPRISE = ResourceType(
     schema_=URN_USER,
     schema_extensions=[SchemaExtension(schema_=URN_ENTERPRISE_USER, required=False)],
 )
-"""User resource type for adapters that map the Enterprise User extension."""
 
 RESOURCE_TYPE_GROUP = ResourceType(
     id="Group",
