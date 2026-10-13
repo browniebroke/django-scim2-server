@@ -703,7 +703,8 @@ class GroupDetailViewTest(AuthenticatedTestCase):
             content_type=SCIM_CONTENT_TYPE,
         )
         assert resp.status_code == 200
-        assert resp.json()["members"] == []
+        assert resp.json().get("members", []) == []
+        assert not scim_group.group.user_set.exists()
 
     def test_patch_group_remove_member_by_filter(self) -> None:
         scim_group = self._create_scim_group()
@@ -725,7 +726,8 @@ class GroupDetailViewTest(AuthenticatedTestCase):
             content_type=SCIM_CONTENT_TYPE,
         )
         assert resp.status_code == 200
-        assert resp.json()["members"] == []
+        assert resp.json().get("members", []) == []
+        assert not scim_group.group.user_set.exists()
 
     def test_patch_group_bulk_replace_without_path(self) -> None:
         scim_group = self._create_scim_group()
