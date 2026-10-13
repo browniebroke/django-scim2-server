@@ -98,6 +98,75 @@ Then point the setting to your adapter:
 SCIM2_SERVER_USER_ADAPTER = "myapp.adapters.MyUserAdapter"
 ```
 
+### PATCH support
+
+Adapters inherit a generic `patch()` from `BaseUserAdapter` / `BaseGroupAdapter`: the resource is rendered with `to_scim()`, the operations are applied to that JSON document, and the result is passed back to `from_scim()` as a full replacement. A custom adapter therefore only implements the mapping once, in `to_scim()` and `from_scim()`.
+
+The PATCH engine accepts the variations sent by Microsoft Entra ID and Okta: capitalised operations (`"Replace"`), booleans sent as strings (`"False"`), dotted or URN-prefixed keys in a path-less `value`, value filters such as `emails[type eq "work"].value`, and removing group members with a `value` list.
+
+### Enterprise User extension
+
+Adapters declare the schemas they support through `resource_type` and `schemas`; the discovery endpoints are built from them. To map the Enterprise User extension (`department`, `employeeNumber`, `manager`...), use the provided constants and read or write `resource[EnterpriseUser]`:
+
+```python
+from typing import ClassVar
+
+from scim2_models import Schema
+
+from django_scim2_server.adapters import BaseUserAdapter
+from django_scim2_server.constants import (
+    RESOURCE_TYPE_USER_WITH_ENTERPRISE,
+    SCHEMA_ENTERPRISE_USER,
+    SCHEMA_USER,
+)
+
+
+class EmployeeAdapter(BaseUserAdapter):
+    resource_type = RESOURCE_TYPE_USER_WITH_ENTERPRISE
+    schemas: ClassVar[list[Schema]] = [SCHEMA_USER, SCHEMA_ENTERPRISE_USER]
+```
+
+### Scoping and object lookup
+
+An adapter is instantiated for each request and keeps it as `self.request`, so `get_queryset()` can restrict what a SCIM client sees, e.g. to the tenant its token belongs to. The SCIM `id` is looked up on `lookup_field` (`"id"` by default); set it to another unique field, such as a public UUID, if your primary key should not be exposed.
+
+## Serving several SCIM endpoints
+
+Use `get_urlpatterns()` to mount the SCIM views more than once, each mount with its own adapters and access control. Arguments left out fall back to the settings. Give each mount its own namespace: resource locations are built from it.
+
+```python
+from django.urls import include, path
+
+from django_scim2_server.urls import get_urlpatterns
+
+
+def tenant_token_auth(request):
+    """Resolve the bearer token to a tenant and remember it for the adapters."""
+    ...
+
+
+urlpatterns = [
+    # Uses the SCIM2_SERVER_* settings
+    path("scim/v2/", include("django_scim2_server.urls")),
+    path(
+        "scim/v2/tenants/",
+        include(
+            (
+                get_urlpatterns(
+                    user_adapter="myapp.adapters.TenantUserAdapter",
+                    group_adapter="myapp.adapters.TenantGroupAdapter",
+                    auth_check=tenant_token_auth,
+                ),
+                "scim2",
+            ),
+            namespace="scim2-tenants",
+        ),
+    ),
+]
+```
+
+`django_scim2_server.auth.get_bearer_token(request)` returns the token from an `Authorization: Bearer ...` header, or `None`, to help write such checks.
+
 ## Settings reference
 
 All settings are prefixed with `SCIM2_SERVER_` and can be set in your Django settings module:
