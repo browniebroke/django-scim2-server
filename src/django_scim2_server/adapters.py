@@ -2,94 +2,140 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.urls import NoReverseMatch, reverse
 from pydantic import ValidationError
-from scim2_models import Email, GroupMember, Meta, Name
+from scim2_models import (
+    Email,
+    EnterpriseUser,
+    GroupMember,
+    Meta,
+    Name,
+    Resource,
+    ResourceType,
+    Schema,
+)
 from scim2_models import Group as SCIMGroupModel
 from scim2_models import User as SCIMUserModel
 
-from django_scim2_server.exceptions import BadRequestError, ConflictError
+from django_scim2_server.constants import (
+    RESOURCE_TYPE_GROUP,
+    RESOURCE_TYPE_USER,
+    SCHEMA_GROUP,
+    SCHEMA_USER,
+)
+from django_scim2_server.exceptions import BadRequestError, ConflictError, NotFoundError
 from django_scim2_server.models import SCIMGroup, SCIMUser
+from django_scim2_server.resource_patch import apply_patch_to_resource
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
     from django.http import HttpRequest
 
 
-class BaseUserAdapter:
-    """Base adapter for mapping SCIM User resources to Django models."""
+class BaseAdapter:
+    """
+    Common behaviour for SCIM resource adapters.
+
+    An adapter is instantiated once per request, so ``self.request`` (and
+    anything an auth check attached to it) can be used to scope queries.
+    """
 
     filter_map: ClassVar[dict[str, str]] = {}
+    lookup_field: ClassVar[str] = "id"
+    """Model field holding the SCIM ``id``."""
+    resource_type: ClassVar[ResourceType]
+    schemas: ClassVar[list[Schema]]
 
-    def get_queryset(self) -> QuerySet[SCIMUser]:
+    def __init__(self, request: HttpRequest | None = None) -> None:
+        self.request = request
+
+    def get_queryset(self) -> QuerySet[Any]:
+        """Return the base queryset, scoped to what this request may see."""
+        raise NotImplementedError
+
+    def get_object(self, scim_id: str) -> Any:
+        """Return the object with SCIM ``id`` ``scim_id`` or raise NotFoundError."""
+        try:
+            return self.get_queryset().get(**{self.lookup_field: scim_id})
+        except (ObjectDoesNotExist, ValueError, DjangoValidationError):
+            raise NotFoundError(
+                f"{self.resource_type.name} {scim_id} not found"
+            ) from None
+
+    def to_scim(self, scim_obj: Any, request: HttpRequest) -> Resource[Any]:
+        """Convert an object to a SCIM resource model."""
+        raise NotImplementedError
+
+    def from_scim(self, data: dict[str, Any], scim_obj: Any | None = None) -> Any:
+        """Create (``scim_obj`` is None) or fully replace an object from SCIM JSON."""
+        raise NotImplementedError
+
+    def delete(self, scim_obj: Any) -> None:
+        """Handle SCIM DELETE."""
+        raise NotImplementedError
+
+    def patch(self, scim_obj: Any, operations: list[dict[str, Any]]) -> Any:
+        """
+        Apply SCIM PATCH operations.
+
+        The resource is rendered with ``to_scim``, patched as JSON, then
+        written back through ``from_scim``, so an adapter only has to
+        implement the mapping once.
+        """
+        request = cast("HttpRequest", self.request)
+        current = self.to_scim(scim_obj, request).model_dump(
+            mode="json", by_alias=True, exclude_none=True
+        )
+        patched = apply_patch_to_resource(current, operations)
+        return self.from_scim(patched, scim_obj)
+
+
+class BaseUserAdapter(BaseAdapter):
+    """Base adapter for mapping SCIM User resources to Django models."""
+
+    resource_type = RESOURCE_TYPE_USER
+    schemas: ClassVar[list[Schema]] = [SCHEMA_USER]
+
+    def get_queryset(self) -> QuerySet[Any]:
         """Return the base queryset for SCIM users."""
         return SCIMUser.objects.select_related("user")
 
-    def to_scim(self, scim_obj: SCIMUser, request: HttpRequest) -> SCIMUserModel[Any]:
-        """Convert a SCIMUser instance to a SCIM User model."""
-        raise NotImplementedError
 
-    def from_scim(
-        self,
-        data: dict[str, Any],
-        scim_obj: SCIMUser | None = None,
-    ) -> SCIMUser:
-        """Create or update a SCIMUser from SCIM JSON data."""
-        raise NotImplementedError
-
-    def delete(self, scim_obj: SCIMUser) -> None:
-        """Handle SCIM DELETE for a user (deactivate by default)."""
-        raise NotImplementedError
-
-    def patch(
-        self,
-        scim_obj: SCIMUser,
-        operations: list[dict[str, Any]],
-    ) -> SCIMUser:
-        """Apply SCIM PATCH operations to a user."""
-        raise NotImplementedError
-
-
-class BaseGroupAdapter:
+class BaseGroupAdapter(BaseAdapter):
     """Base adapter for mapping SCIM Group resources to Django models."""
 
-    filter_map: ClassVar[dict[str, str]] = {}
+    resource_type = RESOURCE_TYPE_GROUP
+    schemas: ClassVar[list[Schema]] = [SCHEMA_GROUP]
 
-    def get_queryset(self) -> QuerySet[SCIMGroup]:
+    def get_queryset(self) -> QuerySet[Any]:
         """Return the base queryset for SCIM groups."""
         return SCIMGroup.objects.select_related("group")
 
-    def to_scim(self, scim_obj: SCIMGroup, request: HttpRequest) -> SCIMGroupModel:
-        """Convert a SCIMGroup instance to a SCIM Group model."""
-        raise NotImplementedError
 
-    def from_scim(
-        self,
-        data: dict[str, Any],
-        scim_obj: SCIMGroup | None = None,
-    ) -> SCIMGroup:
-        """Create or update a SCIMGroup from SCIM JSON data."""
-        raise NotImplementedError
+def build_location(request: HttpRequest, endpoint: str, scim_id: str) -> str:
+    """
+    Build the absolute URL of a SCIM resource.
 
-    def delete(self, scim_obj: SCIMGroup) -> None:
-        """Handle SCIM DELETE for a group."""
-        raise NotImplementedError
-
-    def patch(
-        self,
-        scim_obj: SCIMGroup,
-        operations: list[dict[str, Any]],
-    ) -> SCIMGroup:
-        """Apply SCIM PATCH operations to a group."""
-        raise NotImplementedError
-
-
-def _build_location(request: HttpRequest, endpoint: str, scim_id: str) -> str:
-    """Build the full URL for a SCIM resource."""
+    Resolves against the URL namespace the request came through, so the
+    same views can be mounted more than once.
+    """
+    match = getattr(request, "resolver_match", None)
+    if match is not None:
+        prefix = f"{match.namespace}:" if match.namespace else ""
+        url_name = f"{prefix}{endpoint.lower()}-detail"
+        try:
+            return request.build_absolute_uri(
+                reverse(url_name, kwargs={"scim_id": scim_id})
+            )
+        except NoReverseMatch:
+            pass
     base = request.build_absolute_uri("/").rstrip("/")
     return f"{base}/scim/v2/{endpoint}/{scim_id}"
 
@@ -109,7 +155,7 @@ class DefaultUserAdapter(BaseUserAdapter):
     def to_scim(self, scim_obj: SCIMUser, request: HttpRequest) -> SCIMUserModel[Any]:
         """Convert a SCIMUser to a SCIM User pydantic model."""
         user = scim_obj.user
-        location = _build_location(request, "Users", str(scim_obj.id))
+        location = build_location(request, "Users", str(scim_obj.id))
         return SCIMUserModel(
             id=str(scim_obj.id),
             external_id=scim_obj.external_id or None,
@@ -136,7 +182,7 @@ class DefaultUserAdapter(BaseUserAdapter):
     ) -> SCIMUser:
         """Create or update a SCIMUser from SCIM JSON data."""
         try:
-            scim_user = SCIMUserModel[Any].model_validate(data)
+            scim_user = SCIMUserModel[EnterpriseUser].model_validate(data)
         except ValidationError as exc:
             raise BadRequestError(str(exc)) from exc
 
@@ -225,7 +271,7 @@ class DefaultGroupAdapter(BaseGroupAdapter):
 
     def to_scim(self, scim_obj: SCIMGroup, request: HttpRequest) -> SCIMGroupModel:
         """Convert a SCIMGroup to a SCIM Group pydantic model."""
-        location = _build_location(request, "Groups", str(scim_obj.id))
+        location = build_location(request, "Groups", str(scim_obj.id))
         members = []
         for user in scim_obj.group.user_set.select_related("scim").all():
             scim_user = getattr(user, "scim", None)
