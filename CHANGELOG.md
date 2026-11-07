@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.0 (2026-11-07)
+
+### Features
+
+- Drop support for python 3.10 ([`4f53baf`](https://github.com/browniebroke/django-scim2-server/commit/4f53bafd3f0225d5c90b34d8dbdd68bf56d677ad))
+
 ## v1.1.0 (2026-08-07)
 
 ### Features

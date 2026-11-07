@@ -456,10 +456,10 @@ name = "django"
 version = "5.2.18"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version < '3.12'",
     "python_full_version >= '3.15'",
     "python_full_version >= '3.13' and python_full_version < '3.15'",
     "python_full_version == '3.12.*'",
+    "python_full_version < '3.12'",
 ]
 dependencies = [
     { name = "asgiref", marker = "python_full_version < '3.12' or extra == 'group-19-django-scim2-server-django52' or (extra == 'group-19-django-scim2-server-django60' and extra == 'group-19-django-scim2-server-django61')" },
@@ -511,7 +511,7 @@ wheels = [
 
 [[package]]
 name = "django-scim2-server"
-version = "1.1.0"
+version = "2.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "django", version = "5.2.18", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or extra == 'group-19-django-scim2-server-django52' or (extra == 'group-19-django-scim2-server-django60' and extra == 'group-19-django-scim2-server-django61')" },
