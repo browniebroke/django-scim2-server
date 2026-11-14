@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
@@ -12,23 +12,16 @@ from django.utils.module_loading import import_string
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from pydantic import BaseModel
-from scim2_models import Group as SCIMGroupModel
-from scim2_models import ListResponse, ResourceType, Schema
-from scim2_models import User as SCIMUserModel
 
 from django_scim2_server.conf import app_settings
 from django_scim2_server.constants import (
-    RESOURCE_TYPE_GROUP,
-    RESOURCE_TYPE_USER,
-    SCHEMA_GROUP,
-    SCHEMA_USER,
     SCIM_CONTENT_TYPE,
     SERVICE_PROVIDER_CONFIG,
+    URN_LIST_RESPONSE,
     URN_PATCH_OP,
 )
 from django_scim2_server.exceptions import (
     BadRequestError,
-    NotFoundError,
     SCIMError,
     scim_error_response,
 )
@@ -43,10 +36,13 @@ MAX_PAGE_SIZE = 1000
 MAX_START_INDEX = 1000000
 
 
-def _get_adapter(dotted_path: str) -> Any:
-    """Import and instantiate an adapter class from a dotted path."""
-    cls = import_string(dotted_path)
-    return cls()
+def _resolve(spec: Any, default: str) -> Any:
+    """Turn a dotted path, an object, or None (use the setting) into an object."""
+    if spec is None:
+        spec = default
+    if isinstance(spec, str):
+        return import_string(spec)
+    return spec
 
 
 def _parse_pagination(request: HttpRequest) -> tuple[int, int]:
@@ -68,13 +64,27 @@ def _parse_pagination(request: HttpRequest) -> tuple[int, int]:
     return start_index, count
 
 
+def _dump(model: BaseModel) -> dict[str, Any]:
+    return model.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class SCIMView(View):
-    """Base view for SCIM endpoints."""
+    """
+    Base view for SCIM endpoints.
+
+    ``user_adapter``, ``group_adapter`` and ``auth_check`` default to the
+    ``SCIM2_SERVER_*`` settings and can be overridden per mount through
+    ``as_view()`` or :func:`django_scim2_server.urls.get_urlpatterns`.
+    """
+
+    user_adapter: ClassVar[Any] = None
+    group_adapter: ClassVar[Any] = None
+    auth_check: ClassVar[Any] = None
 
     def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         """Dispatch with SCIM error handling and content type."""
-        auth_check = import_string(app_settings.SCIM2_SERVER_AUTH_CHECK)
+        auth_check = _resolve(self.auth_check, app_settings.SCIM2_SERVER_AUTH_CHECK)
         if not auth_check(request):
             error = SCIMError(detail="Authentication required", status=401)
             return scim_error_response(error)
@@ -86,21 +96,53 @@ class SCIMView(View):
             return scim_error_response(BadRequestError("Invalid JSON in request body"))
         return cast(HttpResponse, response)
 
+    def get_user_adapter(self) -> Any:
+        """Instantiate the user adapter for the current request."""
+        cls = _resolve(self.user_adapter, app_settings.SCIM2_SERVER_USER_ADAPTER)
+        return cls(self.request)
+
+    def get_group_adapter(self) -> Any:
+        """Instantiate the group adapter for the current request."""
+        cls = _resolve(self.group_adapter, app_settings.SCIM2_SERVER_GROUP_ADAPTER)
+        return cls(self.request)
+
     def scim_response(
         self,
         data: BaseModel | dict[str, Any],
         status: int = 200,
     ) -> JsonResponse:
         """Return a JsonResponse with SCIM content type."""
-        if isinstance(data, BaseModel):
-            json_data = data.model_dump(mode="json", by_alias=True, exclude_none=True)
-        else:
-            json_data = data
+        json_data = _dump(data) if isinstance(data, BaseModel) else data
         return JsonResponse(json_data, status=status, content_type=SCIM_CONTENT_TYPE)
+
+    def list_response(
+        self,
+        resources: list[dict[str, Any]],
+        total: int,
+        start_index: int = 1,
+    ) -> JsonResponse:
+        """
+        Return a ListResponse.
+
+        Built from already-dumped resources: a typed ``ListResponse[User[Any]]``
+        would drop extension attributes such as the Enterprise User ones.
+        """
+        return self.scim_response(
+            {
+                "schemas": [URN_LIST_RESPONSE],
+                "totalResults": total,
+                "startIndex": start_index,
+                "itemsPerPage": len(resources),
+                "Resources": resources,
+            },
+        )
 
     def parse_body(self, request: HttpRequest) -> dict[str, Any]:
         """Parse JSON body from request."""
-        return json.loads(request.body)
+        body = json.loads(request.body)
+        if not isinstance(body, dict):
+            raise BadRequestError("Request body must be a JSON object")
+        return body
 
 
 # Discovery views
@@ -119,11 +161,11 @@ class ResourceTypesView(SCIMView):
 
     def get(self, request: HttpRequest) -> JsonResponse:
         """Return the list of resource types."""
-        response = ListResponse[ResourceType](
-            total_results=2,
-            resources=[RESOURCE_TYPE_USER, RESOURCE_TYPE_GROUP],
-        )
-        return self.scim_response(response)
+        resources = [
+            _dump(adapter.resource_type)
+            for adapter in (self.get_user_adapter(), self.get_group_adapter())
+        ]
+        return self.list_response(resources, total=len(resources))
 
 
 class SchemasView(SCIMView):
@@ -131,179 +173,117 @@ class SchemasView(SCIMView):
 
     def get(self, request: HttpRequest) -> JsonResponse:
         """Return the list of schemas."""
-        response = ListResponse[Schema](
-            total_results=2,
-            resources=[SCHEMA_USER, SCHEMA_GROUP],
-        )
-        return self.scim_response(response)
+        schemas: dict[str, dict[str, Any]] = {}
+        for adapter in (self.get_user_adapter(), self.get_group_adapter()):
+            for schema in adapter.schemas:
+                schemas.setdefault(str(schema.id), _dump(schema))
+        resources = list(schemas.values())
+        return self.list_response(resources, total=len(resources))
 
 
 # Resource views
 
 
-class UserListView(SCIMView):
+class _ResourceListView(SCIMView):
+    """GET (list+filter) and POST (create) for one resource type."""
+
+    def get_adapter(self) -> Any:  # pragma: no cover - overridden
+        raise NotImplementedError
+
+    def get(self, request: HttpRequest) -> JsonResponse:
+        """List resources with optional filtering and pagination."""
+        adapter = self.get_adapter()
+        qs = adapter.get_queryset()
+
+        filter_expr = request.GET.get("filter")
+        if filter_expr:
+            qs = qs.filter(parse_filter(filter_expr, adapter.filter_map))
+
+        # SCIM uses a 1-based startIndex.
+        total = qs.count()
+        start_index, count = _parse_pagination(request)
+        offset = start_index - 1
+        page = qs[offset : offset + count]
+
+        resources = [_dump(adapter.to_scim(obj, request)) for obj in page]
+        return self.list_response(resources, total=total, start_index=start_index)
+
+    def post(self, request: HttpRequest) -> JsonResponse:
+        """Create a new resource."""
+        adapter = self.get_adapter()
+        scim_obj = adapter.from_scim(self.parse_body(request))
+        return self.scim_response(adapter.to_scim(scim_obj, request), status=201)
+
+
+class _ResourceDetailView(SCIMView):
+    """GET/PUT/PATCH/DELETE for a single resource."""
+
+    def get_adapter(self) -> Any:  # pragma: no cover - overridden
+        raise NotImplementedError
+
+    def get(self, request: HttpRequest, scim_id: str, **kwargs: Any) -> JsonResponse:
+        """Return a single resource."""
+        adapter = self.get_adapter()
+        scim_obj = adapter.get_object(str(scim_id))
+        return self.scim_response(adapter.to_scim(scim_obj, request))
+
+    def put(self, request: HttpRequest, scim_id: str, **kwargs: Any) -> JsonResponse:
+        """Replace a resource."""
+        adapter = self.get_adapter()
+        scim_obj = adapter.get_object(str(scim_id))
+        scim_obj = adapter.from_scim(self.parse_body(request), scim_obj)
+        return self.scim_response(adapter.to_scim(scim_obj, request))
+
+    def patch(self, request: HttpRequest, scim_id: str, **kwargs: Any) -> JsonResponse:
+        """Partially update a resource via SCIM PatchOp."""
+        adapter = self.get_adapter()
+        scim_obj = adapter.get_object(str(scim_id))
+        data = self.parse_body(request)
+        self._validate_patch(data)
+        scim_obj = adapter.patch(scim_obj, data["Operations"])
+        return self.scim_response(adapter.to_scim(scim_obj, request))
+
+    def delete(self, request: HttpRequest, scim_id: str, **kwargs: Any) -> HttpResponse:
+        """Delete (or deactivate, depending on the adapter) a resource."""
+        adapter = self.get_adapter()
+        adapter.delete(adapter.get_object(str(scim_id)))
+        return HttpResponse(status=204)
+
+    def _validate_patch(self, data: dict[str, Any]) -> None:
+        schemas = data.get("schemas", [])
+        if URN_PATCH_OP not in schemas:
+            raise BadRequestError("PatchOp schema required")
+        if "Operations" not in data:
+            raise BadRequestError("Operations is required")
+
+
+class UserListView(_ResourceListView):
     """GET /Users (list+filter) and POST /Users (create)."""
 
-    def get(self, request: HttpRequest) -> JsonResponse:
-        """List users with optional filtering and pagination."""
-        adapter = _get_adapter(app_settings.SCIM2_SERVER_USER_ADAPTER)
-        qs = adapter.get_queryset()
-
-        # Filtering
-        filter_expr = request.GET.get("filter")
-        if filter_expr:
-            q = parse_filter(filter_expr, adapter.filter_map)
-            qs = qs.filter(q)
-
-        # Pagination (SCIM uses 1-based startIndex)
-        total = qs.count()
-        start_index, count = _parse_pagination(request)
-        offset = start_index - 1
-        page = qs[offset : offset + count]
-
-        resources = [adapter.to_scim(obj, request) for obj in page]
-        response = ListResponse[SCIMUserModel[Any]](
-            total_results=total,
-            start_index=start_index,
-            items_per_page=len(resources),
-            resources=resources,
-        )
-        return self.scim_response(response)
-
-    def post(self, request: HttpRequest) -> JsonResponse:
-        """Create a new user."""
-        adapter = _get_adapter(app_settings.SCIM2_SERVER_USER_ADAPTER)
-        data = self.parse_body(request)
-        scim_obj = adapter.from_scim(data)
-        return self.scim_response(adapter.to_scim(scim_obj, request), status=201)
+    def get_adapter(self) -> Any:
+        """Return the user adapter."""
+        return self.get_user_adapter()
 
 
-class UserDetailView(SCIMView):
+class UserDetailView(_ResourceDetailView):
     """GET/PUT/PATCH/DELETE /Users/<scim_id>."""
 
-    def get(self, request: HttpRequest, scim_id: str, **kwargs: Any) -> JsonResponse:
-        """Return a single user."""
-        adapter = _get_adapter(app_settings.SCIM2_SERVER_USER_ADAPTER)
-        scim_obj = self._get_object(adapter, scim_id)
-        return self.scim_response(adapter.to_scim(scim_obj, request))
-
-    def put(self, request: HttpRequest, scim_id: str, **kwargs: Any) -> JsonResponse:
-        """Replace a user."""
-        adapter = _get_adapter(app_settings.SCIM2_SERVER_USER_ADAPTER)
-        scim_obj = self._get_object(adapter, scim_id)
-        data = self.parse_body(request)
-        scim_obj = adapter.from_scim(data, scim_obj)
-        return self.scim_response(adapter.to_scim(scim_obj, request))
-
-    def patch(self, request: HttpRequest, scim_id: str, **kwargs: Any) -> JsonResponse:
-        """Partially update a user via SCIM PatchOp."""
-        adapter = _get_adapter(app_settings.SCIM2_SERVER_USER_ADAPTER)
-        scim_obj = self._get_object(adapter, scim_id)
-        data = self.parse_body(request)
-        self._validate_patch(data)
-        scim_obj = adapter.patch(scim_obj, data["Operations"])
-        return self.scim_response(adapter.to_scim(scim_obj, request))
-
-    def delete(self, request: HttpRequest, scim_id: str, **kwargs: Any) -> HttpResponse:
-        """Delete (deactivate) a user."""
-        adapter = _get_adapter(app_settings.SCIM2_SERVER_USER_ADAPTER)
-        scim_obj = self._get_object(adapter, scim_id)
-        adapter.delete(scim_obj)
-        return HttpResponse(status=204)
-
-    def _get_object(self, adapter: Any, scim_id: str) -> Any:
-        try:
-            return adapter.get_queryset().get(id=scim_id)
-        except adapter.get_queryset().model.DoesNotExist:
-            raise NotFoundError(f"User {scim_id} not found") from None
-
-    def _validate_patch(self, data: dict[str, Any]) -> None:
-        schemas = data.get("schemas", [])
-        if URN_PATCH_OP not in schemas:
-            raise BadRequestError("PatchOp schema required")
-        if "Operations" not in data:
-            raise BadRequestError("Operations is required")
+    def get_adapter(self) -> Any:
+        """Return the user adapter."""
+        return self.get_user_adapter()
 
 
-class GroupListView(SCIMView):
+class GroupListView(_ResourceListView):
     """GET /Groups (list+filter) and POST /Groups (create)."""
 
-    def get(self, request: HttpRequest) -> JsonResponse:
-        """List groups with optional filtering and pagination."""
-        adapter = _get_adapter(app_settings.SCIM2_SERVER_GROUP_ADAPTER)
-        qs = adapter.get_queryset()
-
-        # Filtering
-        filter_expr = request.GET.get("filter")
-        if filter_expr:
-            q = parse_filter(filter_expr, adapter.filter_map)
-            qs = qs.filter(q)
-
-        # Pagination
-        total = qs.count()
-        start_index, count = _parse_pagination(request)
-        offset = start_index - 1
-        page = qs[offset : offset + count]
-
-        resources = [adapter.to_scim(obj, request) for obj in page]
-        response = ListResponse[SCIMGroupModel](
-            total_results=total,
-            start_index=start_index,
-            items_per_page=len(resources),
-            resources=resources,
-        )
-        return self.scim_response(response)
-
-    def post(self, request: HttpRequest) -> JsonResponse:
-        """Create a new group."""
-        adapter = _get_adapter(app_settings.SCIM2_SERVER_GROUP_ADAPTER)
-        data = self.parse_body(request)
-        scim_obj = adapter.from_scim(data)
-        return self.scim_response(adapter.to_scim(scim_obj, request), status=201)
+    def get_adapter(self) -> Any:
+        """Return the group adapter."""
+        return self.get_group_adapter()
 
 
-class GroupDetailView(SCIMView):
+class GroupDetailView(_ResourceDetailView):
     """GET/PUT/PATCH/DELETE /Groups/<scim_id>."""
 
-    def get(self, request: HttpRequest, scim_id: str, **kwargs: Any) -> JsonResponse:
-        """Return a single group."""
-        adapter = _get_adapter(app_settings.SCIM2_SERVER_GROUP_ADAPTER)
-        scim_obj = self._get_object(adapter, scim_id)
-        return self.scim_response(adapter.to_scim(scim_obj, request))
-
-    def put(self, request: HttpRequest, scim_id: str, **kwargs: Any) -> JsonResponse:
-        """Replace a group."""
-        adapter = _get_adapter(app_settings.SCIM2_SERVER_GROUP_ADAPTER)
-        scim_obj = self._get_object(adapter, scim_id)
-        data = self.parse_body(request)
-        scim_obj = adapter.from_scim(data, scim_obj)
-        return self.scim_response(adapter.to_scim(scim_obj, request))
-
-    def patch(self, request: HttpRequest, scim_id: str, **kwargs: Any) -> JsonResponse:
-        """Partially update a group via SCIM PatchOp."""
-        adapter = _get_adapter(app_settings.SCIM2_SERVER_GROUP_ADAPTER)
-        scim_obj = self._get_object(adapter, scim_id)
-        data = self.parse_body(request)
-        self._validate_patch(data)
-        scim_obj = adapter.patch(scim_obj, data["Operations"])
-        return self.scim_response(adapter.to_scim(scim_obj, request))
-
-    def delete(self, request: HttpRequest, scim_id: str, **kwargs: Any) -> HttpResponse:
-        """Delete a group."""
-        adapter = _get_adapter(app_settings.SCIM2_SERVER_GROUP_ADAPTER)
-        scim_obj = self._get_object(adapter, scim_id)
-        adapter.delete(scim_obj)
-        return HttpResponse(status=204)
-
-    def _get_object(self, adapter: Any, scim_id: str) -> Any:
-        try:
-            return adapter.get_queryset().get(id=scim_id)
-        except adapter.get_queryset().model.DoesNotExist:
-            raise NotFoundError(f"Group {scim_id} not found") from None
-
-    def _validate_patch(self, data: dict[str, Any]) -> None:
-        schemas = data.get("schemas", [])
-        if URN_PATCH_OP not in schemas:
-            raise BadRequestError("PatchOp schema required")
-        if "Operations" not in data:
-            raise BadRequestError("Operations is required")
+    def get_adapter(self) -> Any:
+        """Return the group adapter."""
+        return self.get_group_adapter()

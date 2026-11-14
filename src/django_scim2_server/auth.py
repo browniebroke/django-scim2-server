@@ -14,3 +14,11 @@ def is_superuser(request: HttpRequest) -> bool:
 def is_authenticated(request: HttpRequest) -> bool:
     """Allow access to any authenticated user."""
     return bool(request.user and request.user.is_authenticated)
+
+
+def get_bearer_token(request: HttpRequest) -> str | None:
+    """Return the token of an ``Authorization: Bearer <token>`` header, if any."""
+    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        return None
+    return token.strip()
